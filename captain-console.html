@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>舰长控制台 /CAPTAIN CONSOLE</title>
+<!--
+  技术说明 / TECH STACK
+  · 框架：Vue 3（CDN 全局构建，单文件即可运行）
+  · 动效：原生 Canvas 2D（星海航行 / 战术雷达） + CSS 动画
+  · 音效：WebAudio API（可开关）
+  · 字体：Share Tech Mono（西文/数字） + Noto Sans SC（中文），离线时自动回退系统字体
+  · 风格参考：SpaceX Dragon 座舱 UI（克制的单色 + 数据密度）、流浪地球2 MOSS 终端（深色底 + 琥珀/青色点缀、双语标签）
+-->
+<style>
+  :root{
+    --bg:#04060a;
+    --panel:#0a0e14;
+    --line:rgba(150,170,190,.14);
+    --line2:rgba(150,170,190,.07);
+    --text:#d6dde4;
+    --dim:#5f6b78;
+    --dim2:#7d8a97;
+    --acc:#6fc3c9;
+    --ok:#8fbf7a;
+    --warn:#d9a441;
+    --crit:#e0564f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif;
+    font-size:13px;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  [v-cloak]{display:none}
+  .mono{font-family:'Share Tech Mono','Consolas',monospace}
+
+  /* ---------- 全局微纹理：极淡扫描线与暗角 ---------- */
+  body::before{
+    content:'';position:fixed;inset:0;z-index:6;pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+  body::after{
+    content:'';position:fixed;inset:0;z-index:7;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+
+  /* ---------- 外壳布局 ---------- */
+  .shell{
+    display:grid;grid-template-rows:46px 1fr 34px;gap:8px;
+    height:100vh;padding:8px;
+  }
+  .shell.mode-alert{--acc:#d9a441}
+  .shell.mode-combat{--acc:#e0564f}
+  .main{
+    display:grid;
+    grid-template-columns:minmax(300px,360px) minmax(340px,1fr) minmax(320px,380px);
+    gap:8px;min-height:0;
+  }
+
+  /* ---------- 面板通用 ---------- */
+  .panel{
+    background:linear-gradient(180deg, rgba(148,168,190,.035), rgba(148,168,190,0) 42%), var(--panel);
+    border:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0;
+    position:relative;
+    transition:border-color .25s, box-shadow .25s;
+  }
+  .panel.focused{border-color:rgba(111,195,201,.38)}
+  .shell.fired .wpn{box-shadow:inset 0 0 70px rgba(224,86,79,.12)}
+  .corners{position:absolute;inset:0;pointer-events:none;z-index:2}
+  .corners i{position:absolute;width:11px;height:11px;border-color:rgba(111,195,201,.5);border-style:solid;border-width:0}
+  .corners i:nth-child(1){top:-1px;left:-1px;border-top-width:1px;border-left-width:1px}
+  .corners i:nth-child(2){top:-1px;right:-1px;border-top-width:1px;border-right-width:1px}
+  .corners i:nth-child(3){bottom:-1px;left:-1px;border-bottom-width:1px;border-left-width:1px}
+  .corners i:nth-child(4){bottom:-1px;right:-1px;border-bottom-width:1px;border-right-width:1px}
+
+  .ph{
+    display:flex;align-items:baseline;gap:8px;
+    padding:9px 12px 8px;
+    border-bottom:1px solid var(--line2);
+    flex:none;
+  }
+  .ph-idx{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--acc);letter-spacing:.1em}
+  .ph h2{font-size:13px;font-weight:500;letter-spacing:.24em}
+  .ph h2 em{font-family:'Share Tech Mono',monospace;font-size:9px;font-style:normal;color:var(--dim);letter-spacing:.28em;margin-left:6px}
+  .ph-line{flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent);align-self:center}
+  .ph-state{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.16em;color:var(--dim)}
+  .ph-state.on{color:var(--acc);text-shadow:0 0 8px rgba(111,195,201,.6)}
+  .mode-combat .ph-state{color:var(--crit);text-shadow:0 0 8px rgba(224,86,79,.6);animation:blink 1.2s step-end infinite}
+
+  .panel-body{flex:1;min-height:0;position:relative}
+  .panel-foot{border-top:1px solid var(--line2);padding:8px 10px;flex:none}
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;
+    padding:0 12px;
+    border:1px solid var(--line);border-bottom-color:var(--line2);
+    background:linear-gradient(180deg, rgba(148,168,190,.04), transparent);
+  }
+  .mode-combat .topbar{border-color:rgba(224,86,79,.35)}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand-mark{
+    width:26px;height:26px;display:grid;place-items:center;
+    border:1px solid rgba(111,195,201,.6);color:var(--acc);
+    font-size:15px;transform:rotate(45deg);
+  }
+  .brand-mark b{transform:rotate(-45deg);font-weight:400}
+  .brand-name{font-size:15px;letter-spacing:.34em}
+  .brand-name span{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.3em;margin-left:8px}
+  .brand-sub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.22em;margin-top:2px}
+  .top-center{display:flex;justify-content:center}
+  .alert-switch{display:flex;border:1px solid var(--line)}
+  .alert-switch button{
+    background:transparent;border:0;color:var(--dim2);
+    font-family:'Noto Sans SC',sans-serif;font-size:11px;letter-spacing:.2em;
+    padding:5px 16px;cursor:pointer;transition:all .2s;
+    border-right:1px solid var(--line2);
+  }
+  .alert-switch button:last-child{border-right:0}
+  .alert-switch button:hover{color:var(--text);background:rgba(148,168,190,.06)}
+  .alert-switch button.on{color:#04060a;background:var(--acc);font-weight:500}
+  .mode-alert .alert-switch button.on{background:var(--warn)}
+  .mode-combat .alert-switch button.on{background:var(--crit)}
+  .top-right{display:flex;align-items:center;gap:14px}
+  .led{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.12em}
+  .led b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
+  .led .dot{width:6px;height:6px;border-radius:50%;background:#3a4350}
+  .led .dot.blink{background:var(--acc);box-shadow:0 0 6px rgba(111,195,201,.9)}
+  .led.bad .dot{background:var(--crit);box-shadow:0 0 6px rgba(224,86,79,.8)}
+  .clock{text-align:right}
+  .clock-time{font-family:'Share Tech Mono',monospace;font-size:17px;letter-spacing:.08em;line-height:1.05;color:#e6ecf1}
+  .clock-date{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.14em}
+  .icon-btn{
+    background:transparent;border:1px solid var(--line);color:var(--dim2);
+    width:26px;height:26px;cursor:pointer;font-size:12px;transition:all .2s;
+  }
+  .icon-btn:hover{color:var(--text);border-color:var(--dim2)}
+  .icon-btn.on{color:var(--acc);border-color:rgba(111,195,201,.5)}
+
+  /* ---------- 航行面板 ---------- */
+  .starfield{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .route-legend{
+    position:absolute;left:10px;bottom:8px;z-index:1;
+    display:flex;gap:12px;font-size:9px;color:var(--dim);letter-spacing:.14em;
+  }
+  .route-legend span{display:flex;align-items:center;gap:4px}
+  .lg{width:14px;height:1px;display:inline-block}
+  .lg-a{background:rgba(111,195,201,.7)}
+  .lg-b{background:#dfe8ef}
+  .lg-c{background:rgba(111,195,201,.95);box-shadow:0 0 4px rgba(111,195,201,.8)}
+
+  .telemetry{
+    display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line2);
+    border-bottom:1px solid var(--line2);
+  }
+  .tele-cell{background:var(--panel);padding:7px 10px}
+  .tele-label{font-size:9px;color:var(--dim);letter-spacing:.2em}
+  .tele-value{font-family:'Share Tech Mono',monospace;font-size:17px;color:#e6ecf1;margin-top:2px;font-variant-numeric:tabular-nums}
+  .tele-value small{font-size:10px;color:var(--dim2);margin-left:3px}
+  .tele-cell.warn .tele-value{color:var(--warn)}
+  .throttle-row{display:flex;align-items:center;gap:10px;padding:8px 10px}
+  .throttle-row label{font-size:10px;color:var(--dim);letter-spacing:.18em;white-space:nowrap}
+  .throttle-row input[type=range]{flex:1;accent-color:var(--acc);height:2px;cursor:pointer}
+  .throttle-row output{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--acc);min-width:34px;text-align:right}
+
+  .wplist{display:flex;flex-direction:column}
+  .wp{
+    display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;
+    border-left:2px solid transparent;transition:all .15s;
+  }
+  .wp:hover{background:rgba(148,168,190,.05)}
+  .wp.active{border-left-color:var(--acc);background:rgba(111,195,201,.07)}
+  .wp .wp-id{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim);min-width:38px}
+  .wp.active .wp-id{color:var(--acc)}
+  .wp .wp-name{flex:1;font-size:12px;letter-spacing:.1em}
+  .wp .wp-meta{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:right}
+
+  /* ---------- 命令面板 ---------- */
+  .cmd-body{display:flex;flex-direction:column;padding:10px;gap:10px;overflow-y:auto;height:100%}
+  .mission{border:1px solid var(--line2);padding:9px 11px;flex:none}
+  .mission-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .mission-name{font-size:12px;letter-spacing:.14em}
+  .mission-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);margin-left:6px;letter-spacing:.2em}
+  .mission-pct{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--acc)}
+  .mission-desc{font-size:11px;color:var(--dim2);line-height:1.6;margin-bottom:8px}
+  .phase-row{display:flex;align-items:center;gap:0;margin-bottom:8px}
+  .phase{flex:1;text-align:center;font-size:9px;color:var(--dim);letter-spacing:.1em;padding:3px 0;border-bottom:2px solid var(--line2);position:relative}
+  .phase.done{color:var(--dim2);border-color:rgba(111,195,201,.35)}
+  .phase.cur{color:var(--acc);border-color:var(--acc)}
+  .phase.cur::after{content:'';position:absolute;left:50%;bottom:-3px;width:5px;height:5px;background:var(--acc);transform:translateX(-50%) rotate(45deg)}
+  .adv-btn{
+    width:100%;padding:6px;background:transparent;border:1px dashed var(--line);
+    color:var(--dim2);font-size:10px;letter-spacing:.2em;cursor:pointer;transition:all .2s;
+  }
+  .adv-btn:hover{color:var(--acc);border-color:rgba(111,195,201,.5)}
+
+  .ship-wrap{display:flex;justify-content:center;padding:2px 0 6px;flex:none}
+  .ship{width:180px;height:90px}
+  .warp-ring{animation:spin 7s linear infinite;transform-origin:70px 35px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .orders{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}
+  .cmd-btn{
+    padding:9px 6px;text-align:center;cursor:pointer;
+    background:rgba(111,195,201,.04);border:1px solid rgba(111,195,201,.28);
+    color:var(--dim2);transition:all .18s;
+  }
+  .cmd-btn em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;letter-spacing:.2em;color:var(--dim);margin-top:3px}
+  .cmd-btn:hover{background:rgba(111,195,201,.12);color:var(--text)}
+  .cmd-btn.on{background:rgba(111,195,201,.18);color:#e6f6f7;border-color:var(--acc);box-shadow:inset 0 0 14px rgba(111,195,201,.12)}
+  .cmd-btn.on em{color:var(--acc)}
+  .cmd-btn.danger{grid-column:1/-1;border-color:rgba(224,86,79,.4);background:rgba(224,86,79,.05)}
+  .cmd-btn.danger:hover{background:rgba(224,86,79,.14);color:#ffd9d6}
+  .cmd-btn.danger em{color:#a4685f}
+
+  .ai-line{
+    flex:none;display:flex;gap:8px;align-items:flex-start;
+    border:1px solid var(--line2);padding:7px 10px;background:rgba(148,168,190,.03);
+  }
+  .ai-tag{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--acc);letter-spacing:.14em;white-space:nowrap;padding-top:2px}
+  .ai-text{font-size:11px;color:var(--dim2);line-height:1.6;min-height:17px}
+  .ai-text::after{content:'▌';color:var(--acc);animation:blink 1s step-end infinite;margin-left:2px}
+  @keyframes blink{50%{opacity:0}}
+
+  .log-box{flex:1;min-height:0;display:flex;flex-direction:column}
+  .log-title{font-size:9px;color:var(--dim);letter-spacing:.24em;padding:2px 0 6px}
+  .log-feed{flex:1;min-height:0;overflow-y:auto;border:1px solid var(--line2);background:rgba(0,0,0,.25);padding:6px 8px}
+  .log-item{
+    display:flex;gap:8px;font-family:'Share Tech Mono',monospace;font-size:10px;
+    padding:3px 0;border-left:2px solid transparent;padding-left:6px;line-height:1.5;
+    animation:fadein .3s;
+  }
+  @keyframes fadein{from{opacity:0;transform:translateY(-3px)}to{opacity:1}}
+  .log-item .lt{color:var(--dim);flex:none}
+  .log-item .ls{color:var(--dim2);flex:none;min-width:30px}
+  .log-item .lm{color:var(--dim2)}
+  .log-item.t-ok{border-color:var(--acc)}
+  .log-item.t-ok .lm{color:#a9d4d6}
+  .log-item.t-warn{border-color:var(--warn)}
+  .log-item.t-warn .lm{color:#d8b26a}
+  .log-item.t-crit{border-color:var(--crit)}
+  .log-item.t-crit .lm{color:#e08a84}
+  .log-item.t-cmd .lm{color:#dfe8ef}
+  .log-item.t-info .lm{color:var(--dim2)}
+
+  /* ---------- 武器面板 ---------- */
+  .wpn-body{display:flex;flex-direction:column;gap:8px;padding:10px;overflow-y:auto;height:100%}
+  .radar-wrap{position:relative;height:150px;flex:none;border:1px solid var(--line2);background:rgba(0,0,0,.25)}
+  .radar-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .radar-tag{position:absolute;top:6px;left:8px;font-size:9px;color:var(--dim);letter-spacing:.2em;z-index:1}
+  .radar-hint{position:absolute;bottom:6px;right:8px;font-size:9px;color:var(--dim);letter-spacing:.14em;z-index:1}
+
+  .target-row{display:flex;align-items:center;gap:10px;flex:none}
+  .target-info{flex:1}
+  .target-name{font-family:'Share Tech Mono',monospace;font-size:12px;color:#e6ecf1;letter-spacing:.1em}
+  .target-sub{font-size:9px;color:var(--dim);letter-spacing:.14em;margin-top:2px}
+  .lock-bar{height:3px;background:rgba(255,255,255,.06);margin-top:5px;position:relative}
+  .lock-bar i{display:block;height:100%;background:var(--warn);transition:width .1s linear;width:0}
+  .lock-bar i.full{background:var(--crit)}
+  .target-btn{
+    padding:7px 12px;background:transparent;border:1px solid var(--line);
+    color:var(--dim2);font-size:11px;letter-spacing:.18em;cursor:pointer;transition:all .2s;white-space:nowrap;
+  }
+  .target-btn:hover{color:var(--text);border-color:var(--dim2)}
+  .target-btn.on{color:var(--crit);border-color:rgba(224,86,79,.6);box-shadow:inset 0 0 12px rgba(224,86,79,.15)}
+
+  .weapon-list{display:flex;flex-direction:column;gap:1px;background:var(--line2);border:1px solid var(--line2);flex:none}
+  .weapon{
+    background:var(--panel);padding:7px 10px;cursor:pointer;transition:background .15s;
+    border-left:2px solid transparent;
+  }
+  .weapon:hover{background:rgba(148,168,190,.05)}
+  .weapon.sel{border-left-color:var(--acc);background:rgba(111,195,201,.06)}
+  .w-row1{display:flex;align-items:baseline;gap:8px}
+  .w-cn{font-size:12px;letter-spacing:.08em}
+  .w-en{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:.2em;flex:1}
+  .w-kind{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim2);border:1px solid var(--line2);padding:0 4px}
+  .w-ammo{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim2)}
+  .w-charge{height:3px;background:rgba(255,255,255,.06);margin-top:6px;position:relative}
+  .w-charge i{display:block;height:100%;background:var(--acc);transition:width .1s linear}
+  .w-charge i.hot{background:var(--warn)}
+  .w-charge i.full{background:var(--ok);box-shadow:0 0 6px rgba(143,191,122,.8)}
+  .w-charge span{position:absolute;right:0;top:-13px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim)}
+
+  .fire-control{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;flex:none;margin-top:2px}
+  .fire-btn{
+    padding:9px 6px;text-align:center;cursor:pointer;font-size:12px;letter-spacing:.2em;
+    background:rgba(148,168,190,.05);border:1px solid var(--line);color:var(--dim2);
+    transition:all .18s;font-family:'Noto Sans SC',sans-serif;
+  }
+  .fire-btn em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);letter-spacing:.18em;margin-top:2px}
+  .fire-btn:hover{color:var(--text);border-color:var(--dim2)}
+  .fire-btn.charge.on{background:rgba(217,164,65,.16);border-color:rgba(217,164,65,.6);color:#e8c97e}
+  .fire-btn.shoot{border-color:rgba(224,86,79,.45);color:#cf7c75}
+  .fire-btn.shoot:hover{background:rgba(224,86,79,.16);color:#ffd9d6}
+  .fire-btn:disabled{opacity:.35;cursor:not-allowed}
+
+  /* ---------- 底栏 ---------- */
+  .bottombar{
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;
+    padding:0 12px;border:1px solid var(--line);border-top-color:var(--line2);
+    background:linear-gradient(180deg, rgba(148,168,190,.03), transparent);
+    font-size:9px;color:var(--dim);letter-spacing:.14em;
+  }
+  .keys b{color:var(--dim2);font-weight:400;border:1px solid var(--line2);padding:0 4px;font-family:'Share Tech Mono',monospace}
+  .keys b+span{margin-left:4px}
+  .ticker{overflow:hidden;white-space:nowrap}
+  .ticker span{display:flex;animation:marq 28s linear infinite}
+  .ticker i{font-style:normal;white-space:nowrap;margin-right:56px}
+  .ticker i::before{content:'●';color:var(--acc);margin-right:10px;font-size:6px;vertical-align:middle}
+  @keyframes marq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .globals{display:flex;gap:14px;align-items:center}
+  .gbar{display:flex;flex-direction:column;gap:3px;min-width:74px}
+  .gbar label{font-size:8px;color:var(--dim);letter-spacing:.16em;display:flex;justify-content:space-between}
+  .gbar label b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
+  .gbar .bar{height:3px;background:rgba(255,255,255,.07)}
+  .gbar .bar i{display:block;height:100%;background:var(--acc);transition:width .3s}
+  .gbar.warn .bar i{background:var(--warn)}
+  .gbar.crit .bar i{background:var(--crit)}
+
+  /* ---------- 开机自检覆盖层 ---------- */
+  .boot{
+    position:fixed;inset:0;z-index:50;background:rgba(3,5,8,.985);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .boot-box{width:min(640px,88vw)}
+  .boot-logo{font-size:34px;color:var(--acc);margin-bottom:18px;letter-spacing:.2em}
+  .boot-logo span{font-size:12px;color:var(--dim);margin-left:12px;letter-spacing:.3em}
+  .boot-lines{
+    font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--acc);
+    line-height:1.9;min-height:220px;white-space:pre-wrap;letter-spacing:.06em;
+    text-shadow:0 0 10px rgba(111,195,201,.25);
+  }
+  .boot-hint{font-size:10px;color:var(--dim);letter-spacing:.3em;margin-top:16px;text-align:center;animation:blink 1.4s step-end infinite}
+  .bootfade-enter-active,.bootfade-leave-active{transition:opacity .6s ease}
+  .bootfade-enter-from,.bootfade-leave-to{opacity:0}
+
+  /* ---------- 窄屏降级：三栏纵向堆叠 ---------- */
+  @media (max-width: 1000px){
+    .shell{grid-template-rows:auto 1fr auto}
+    .main{grid-template-columns:1fr;overflow-y:auto;padding-bottom:8px}
+    .panel{min-height:460px}
+    .topbar{grid-template-columns:1fr;gap:6px;padding:8px 12px}
+    .top-center{justify-content:flex-start}
+    .top-right{justify-content:space-between}
+  }
+</style>
+</head>
+<body>
+<div id="app" v-cloak :class="['shell','mode-'+alertLevel]">
+
+  <!-- 开机自检 -->
+  <transition name="bootfade">
+    <div class="boot" v-if="!bootDone" @click="skipBoot">
+      <div class="boot-box">
+        <div class="boot-logo">▣<span>CHI XIAO · SHIPBOARD COMPUTER v4.2</span></div>
+        <pre class="boot-lines">{{ bootText }}</pre>
+        <div class="boot-hint">点击任意位置跳过 · CLICK TO SKIP</div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><b>▣</b></div>
+      <div>
+        <div class="brand-name">赤霄号 <span>CHI XIAO</span></div>
+        <div class="brand-sub">CNS-07 · 深空战术母舰 · DEEP SPACE VESSEL</div>
+      </div>
+    </div>
+    <div class="top-center">
+      <div class="alert-switch">
+        <button v-for="l in alertLevels" :key="l.key" :class="{on:alertLevel===l.key}" @click="setAlert(l.key)">{{l.label}}</button>
+      </div>
+    </div>
+    <div class="top-right">
+      <div class="led" v-for="s in sysLeds" :key="s.key" :class="{bad:!s.on}">
+        <i class="dot" :class="{blink:s.on}"></i>{{s.label}}<b>{{s.on?'在线':'离线'}}</b>
+      </div>
+      <div class="clock">
+        <div class="clock-time">{{ shipTime }}</div>
+        <div class="clock-date">{{ shipDate }} · UTC+8</div>
+      </div>
+      <button class="icon-btn" :class="{on:sound}" @click="toggleSound" title="音效开关">♪</button>
+    </div>
+  </header>
+
+  <!-- 主体 -->
+  <main class="main">
+
+    <!-- ============ 01 航行 ============ -->
+    <section class="panel nav" :class="{focused:focus==='nav'}" @click="focus='nav'">
+      <i class="corners"><i></i><i></i><i></i><i></i></i>
+      <header class="ph">
+        <span class="ph-idx">01</span>
+        <h2>航行<em>NAVIGATION</em></h2>
+        <span class="ph-line"></span>
+        <span class="ph-state" :class="navStateCls">{{ navState }}</span>
+      </header>
+      <div class="panel-body">
+        <canvas ref="starCanvas" class="starfield"></canvas>
+        <div class="route-legend">
+          <span><i class="lg lg-a"></i>航路</span>
+          <span><i class="lg lg-b"></i>本舰</span>
+          <span><i class="lg lg-c"></i>目标</span>
+        </div>
+      </div>
+      <div class="panel-foot">
+        <div class="telemetry">
+          <div class="tele-cell"><div class="tele-label">航速 / VELOCITY</div><div class="tele-value">{{ speedKm }}<small>km/s</small></div></div>
+          <div class="tele-cell"><div class="tele-label">航向 / HEADING</div><div class="tele-value">{{ heading.toFixed(1) }}<small>°</small></div></div>
+          <div class="tele-cell warn"><div class="tele-label">燃料 / FUEL</div><div class="tele-value">{{ fuelPct.toFixed(1) }}<small>%</small></div></div>
+          <div class="tele-cell"><div class="tele-label">姿态稳定 / STABILITY</div><div class="tele-value">{{ stability.toFixed(1) }}<small>%</small></div></div>
+        </div>
+        <div class="throttle-row">
+          <label>推进功率 THRUST</label>
+          <input type="range" min="0" max="100" v-model.number="throttle">
+          <output>{{ throttle }}%</output>
+        </div>
+        <div class="wplist">
+          <div class="wp" v-for="(w,i) in waypoints" :key="w.id" :class="{active:w.active}" @click="setWp(i)">
+            <span class="wp-id">{{ w.id }}</span>
+            <span class="wp-name">{{ w.name }}</span>
+            <span class="wp-meta">{{ w.dist }} · ETA {{ w.eta }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 02 命令 ============ -->
+    <section class="panel cmd" :class="{focused:focus==='cmd'}" @click="focus='cmd'">
+      <i class="corners"><i></i><i></i><i></i><i></i></i>
+      <header class="ph">
+        <span class="ph-idx">02</span>
+        <h2>命令<em>COMMAND</em></h2>
+        <span class="ph-line"></span>
+        <span class="ph-state on">舰长在线</span>
+      </header>
+      <div class="cmd-body">
+
+        <div class="mission">
+          <div class="mission-head">
+            <div class="mission-name">深空侦察 · 任务 S-7<em>MISSION</em></div>
+            <div class="mission-pct">{{ missionPct }}%</div>
+          </div>
+          <div class="mission-desc">抵近观测目标天体 T-04，采集光谱与引力场数据后返航。</div>
+          <div class="phase-row">
+            <div class="phase" v-for="(p,i) in phases" :key="p" :class="{done:i&lt;phaseIdx, cur:i===phaseIdx}">{{p}}</div>
+          </div>
+          <button class="adv-btn" @click="advPhase">推进任务阶段 · ADVANCE PHASE</button>
+        </div>
+
+        <div class="ship-wrap">
+          <svg class="ship" viewBox="0 0 140 70">
+            <defs>
+              <linearGradient id="flame" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#6fc3c9"/><stop offset="1" stop-color="rgba(111,195,201,0)"/>
+              </linearGradient>
+            </defs>
+            <circle v-if="orders.warp" class="warp-ring" cx="70" cy="35" r="30" fill="none" stroke="#6fc3c9" stroke-opacity=".5" stroke-dasharray="10 8"/>
+            <rect x="14" y="22" width="92" height="26" rx="13" fill="#141a22" stroke="#6fc3c9" stroke-opacity=".55"/>
+            <path d="M14 35 L6 26 L6 44 Z" fill="#141a22" stroke="#6fc3c9" stroke-opacity=".55"/>
+            <rect x="30" y="27" width="26" height="16" rx="3" fill="#0d1b20" stroke="#6fc3c9" stroke-opacity=".8"/>
+            <line x1="58" y1="35" x2="94" y2="35" stroke="#6fc3c9" stroke-opacity=".35"/>
+            <rect x="100" y="23" width="10" height="10" fill="#1a2430" stroke="#6fc3c9" stroke-opacity=".4"/>
+            <rect x="100" y="37" width="10" height="10" fill="#1a2430" stroke="#6fc3c9" stroke-opacity=".4"/>
+            <polygon :style="{opacity: throttle/100}" points="110,24 142,29 142,41 110,36" fill="url(#flame)"/>
+            <polygon :style="{opacity: throttle/100}" points="110,38 142,43 142,55 110,48" fill="url(#flame)"/>
+          </svg>
+        </div>
+
+        <div class="orders">
+          <button class="cmd-btn" v-for="b in cmdButtons" :key="b.key" :class="{on:orders[b.key]}" @click="toggleOrder(b.key)">
+            {{ b.cn }}<em>{{ b.en }}</em>
+          </button>
+          <button class="cmd-btn danger" @click="alarm">紧急警报<em>ALARM</em></button>
+        </div>
+
+        <div class="ai-line">
+          <span class="ai-tag">AI 副官</span>
+          <span class="ai-text">{{ aiText }}</span>
+        </div>
+
+        <div class="log-box">
+          <div class="log-title">指挥记录 · COMMAND LOG</div>
+          <div class="log-feed">
+            <div class="log-item" v-for="(item,i) in log" :key="i" :class="'t-'+item.type">
+              <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ 03 武器 ============ -->
+    <section class="panel wpn" :class="{focused:focus==='wpn'}" @click="focus='wpn'">
+      <i class="corners"><i></i><i></i><i></i><i></i></i>
+      <header class="ph">
+        <span class="ph-idx">03</span>
+        <h2>武器<em>WEAPONS</em></h2>
+        <span class="ph-line"></span>
+        <span class="ph-state" :class="selW.charge>=100?'on':''">{{ selW.charge>=100 ? '可开火' : '待命' }}</span>
+      </header>
+      <div class="wpn-body">
+
+        <div class="radar-wrap">
+          <canvas ref="radarCanvas"></canvas>
+          <div class="radar-tag">战术雷达 · TACTICAL</div>
+          <div class="radar-hint">RNG 40,000 km</div>
+        </div>
+
+        <div class="target-row">
+          <div class="target-info">
+            <div class="target-name">T-04 · 未知目标</div>
+            <div class="target-sub">相对速度 -2.3 km/s · 距离 31,400 km</div>
+            <div class="lock-bar"><i :class="{full:locked}" :style="{width: lockP+'%'}"></i></div>
+          </div>
+          <button class="target-btn" :class="{on:locked}" @click="toggleLock">{{ locked?'解除锁定':'锁定目标' }}</button>
+        </div>
+
+        <div class="weapon-list">
+          <div class="weapon" v-for="w in weapons" :key="w.id" :class="{sel:w.id===selW.id}" @click="selectWeapon(w.id)">
+            <div class="w-row1">
+              <span class="w-cn">{{ w.cn }}</span>
+              <span class="w-en">{{ w.en }}</span>
+              <span class="w-kind">{{ w.kind }}</span>
+              <span class="w-ammo">{{ w.ammo===Infinity ? '∞' : w.ammo+' / '+w.max }}</span>
+            </div>
+            <div class="w-charge">
+              <i :class="{hot:w.charge>0&&w.charge<100, full:w.charge>=100}" :style="{width: w.charge+'%'}"></i>
+              <span>{{ w.charge }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="fire-control">
+          <button class="fire-btn charge" :class="{on:charging}" @click="toggleCharge">
+            {{ charging?'充能中…':'充能' }}<em>CHARGE</em>
+          </button>
+          <button class="fire-btn shoot" @click="fireWeapon">开火<em>FIRE</em></button>
+          <button class="fire-btn" :disabled="!locked" @click="fireWeapon">齐射<em>VOLLEY</em></button>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- 底栏 -->
+  <footer class="bottombar">
+    <div class="keys">
+      <b>1</b><span>航行</span><b>2</b><span>命令</span><b>3</b><span>武器</span><b>空格</b><span>开火</span>
+    </div>
+    <div class="ticker">
+      <span><i>{{ tickerText }}</i><i>{{ tickerText }}</i></span>
+    </div>
+    <div class="globals">
+      <div class="gbar"><label>反应堆 <b>{{ reactorLoad }}%</b></label><div class="bar"><i :style="{width:reactorLoad+'%'}"></i></div></div>
+      <div class="gbar" :class="{crit:shieldPct&lt;30}"><label>护盾 <b>{{ shieldPct.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:shieldPct+'%'}"></i></div></div>
+      <div class="gbar warn"><label>燃料 <b>{{ fuelPct.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:fuelPct+'%'}"></i></div></div>
+    </div>
+  </footer>
+
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+/* CDN 加载失败的降级提示（离线打开时可见） */
+setTimeout(function(){
+  if(!window.Vue){
+    var app = document.getElementById('app');
+    if(app){
+      app.removeAttribute('v-cloak');
+      app.innerHTML = '<div style="display:grid;place-items:center;height:100vh;color:#d6dde4;font-family:monospace;text-align:center;line-height:2">' +
+        '无法加载 Vue 3 运行时（本页通过 CDN 加载，需联网访问）。<br>' +
+        'Vue 3 runtime failed to load from CDN — please check your network connection.<br>' +
+        '<span style="color:#5f6b78">文件：captain-console.html · 赤霄号舰长控制台</span></div>';
+    }
+  }
+}, 6000);
+</script>
+<script>
+const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
+
+const __app = createApp({
+  setup(){
+
+    /* ================= 基础状态 ================= */
+    const alertLevel = ref('patrol');
+    const alertLevels = [
+      {key:'patrol', label:'巡航'},
+      {key:'alert',  label:'戒备'},
+      {key:'combat', label:'作战'},
+    ];
+    const sound   = ref(true);
+    const focus   = ref('nav');
+    const firing  = ref(false);
+
+    /* ================= 时钟 / 日志 ================= */
+    const now     = () => new Date();
+    const fmt2    = n => String(n).padStart(2,'0');
+    const timeFmt = () => { const d=now(); return `${fmt2(d.getHours())}:${fmt2(d.getMinutes())}:${fmt2(d.getSeconds())}`; };
+    const shipTime = ref('--:--:--');
+    const shipDate = ref('');
+    function tickClock(){
+      const d = now();
+      shipTime.value = timeFmt();
+      shipDate.value = `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())} 星期${'日一二三四五六'[d.getDay()]}`;
+    }
+
+    const log = ref([]);
+    function pushLog(msg, type='info', src='系统'){
+      log.value.unshift({ t: timeFmt(), msg, type, src });
+      if(log.value.length > 80) log.value.length = 80;
+    }
+
+    /* ================= 音效 (WebAudio) ================= */
+    let actx = null;
+    function ensureAudio(){
+      if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+    }
+    function beep(f=880, d=0.06, type='square', g=0.03){
+      if(!sound.value || !actx) return;
+      try{
+        const o = actx.createOscillator(), gn = actx.createGain();
+        o.type = type; o.frequency.value = f; gn.gain.value = g;
+        o.connect(gn); gn.connect(actx.destination);
+        const t = actx.currentTime;
+        gn.gain.setValueAtTime(g, t);
+        gn.gain.exponentialRampToValueAtTime(0.0001, t+d);
+        o.start(t); o.stop(t+d);
+      }catch(e){}
+    }
+    function toggleSound(){ sound.value = !sound.value; if(sound.value) beep(880,0.06,'square',0.04); }
+
+    /* ================= 开机自检 ================= */
+    const bootDone = ref(false);
+    const bootText = ref('');
+    const BOOT = [
+      '赤霄号 · 舰载计算机系统',
+      'CHI XIAO · SHIPBOARD COMPUTER',
+      '',
+      '> 加载核心模块 .............. 完成',
+      '> 反应堆并网 ............... 完成',
+      '> 导航星历同步 ............. 完成',
+      '> 武器子系统自检 ........... 完成',
+      '> 生命维持系统 ............. 完成',
+      '> 全系统自检通过 · ALL SYSTEMS NOMINAL',
+      '',
+      '欢迎登舰，舰长。',
+    ].join('\n');
+    let bootTimer = null;
+    function runBoot(){
+      let i = 0;
+      bootTimer = setInterval(()=>{
+        i++;
+        bootText.value = BOOT.slice(0, i);
+        if(i >= BOOT.length){
+          clearInterval(bootTimer);
+          setTimeout(()=>{ bootDone.value = true; pushLog('舰载计算机上线 · ALL SYSTEMS NOMINAL','ok'); }, 500);
+        }
+      }, 26);
+    }
+    function skipBoot(){
+      if(bootDone.value) return;
+      clearInterval(bootTimer);
+      bootDone.value = true;
+      pushLog('舰长跳过自检，接管控制台','cmd','舰长');
+      beep(660,0.08,'square',0.035);
+    }
+
+    /* ================= 航行状态 ================= */
+    const throttle  = ref(32);
+    const heading   = ref(217.6);
+    const fuel      = ref(86.4);
+    const stability = ref(99.1);
+    const speedKm   = computed(()=> (1.6 + throttle.value*0.34).toFixed(1));
+    const fuelPct   = computed(()=> Math.max(0, fuel.value));
+    const navState    = computed(()=> throttle.value > 0 ? '巡航中' : '待命');
+    const navStateCls = computed(()=> throttle.value > 0 ? 'on' : '');
+
+    const waypoints = reactive([
+      {id:'WP-01', name:'林奈星港',     dist:'1.2 AU', eta:'02:14', active:true },
+      {id:'WP-02', name:'小行星带边缘', dist:'3.8 AU', eta:'07:43', active:false},
+      {id:'WP-03', name:'观测点 S-7',   dist:'9.6 AU', eta:'21:03', active:false},
+    ]);
+    function setWp(i){
+      waypoints.forEach((w,k)=> w.active = (k===i));
+      pushLog(`航路目标更新 → ${waypoints[i].name}（${waypoints[i].dist}）`,'cmd','导航');
+      beep(660,0.05,'square',0.025);
+    }
+
+    /* ================= 星海 Canvas ================= */
+    const starCanvas = ref(null);
+    let stars = [], raf = null;
+    function sizeCanvas(){
+      const cv = starCanvas.value, rc = radarCanvas.value;
+      if(cv && cv.parentElement){ cv.width = cv.parentElement.clientWidth;  cv.height = cv.parentElement.clientHeight; }
+      if(rc && rc.parentElement){ rc.width = rc.parentElement.clientWidth;  rc.height = rc.parentElement.clientHeight; }
+    }
+    function drawStars(ts){
+      raf = requestAnimationFrame(drawStars);
+      const cv = starCanvas.value; if(!cv) return;
+      const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+      ctx.clearRect(0,0,w,h);
+      const dt = Math.min(50, ts - (drawStars._last||ts)); drawStars._last = ts;
+      const spd = (0.00035 + throttle.value*0.000045) * dt;
+      for(const s of stars){
+        s.z -= spd;
+        if(s.z <= 0.04){ s.z = 1; s.x = Math.random()*2-1; s.y = Math.random()*2-1; }
+        const sx = (s.x/s.z*0.5+0.5)*w, sy = (s.y/s.z*0.5+0.5)*h;
+        if(sx<0||sx>w||sy<0||sy>h) continue;
+        ctx.fillStyle = `rgba(190,205,220,${Math.max(0,1-s.z)*0.9})`;
+        const r = 0.3 + (1-s.z)*1.4;
+        ctx.fillRect(sx,sy,r,r);
+      }
+      // 航路折线
+      const pts = [[0.09,0.84],[0.34,0.62],[0.60,0.42],[0.84,0.20]];
+      const activeIdx = waypoints.findIndex(w=>w.active);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0]*w, pts[0][1]*h);
+      for(let i=1;i<=activeIdx;i++) ctx.lineTo(pts[i][0]*w, pts[i][1]*h);
+      ctx.setLineDash([4,7]); ctx.lineDashOffset = -(ts*0.02)%11;
+      ctx.strokeStyle = 'rgba(111,195,201,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.setLineDash([]);
+      // 航点标记
+      for(let i=1;i<pts.length;i++){
+        const x = pts[i][0]*w, y = pts[i][1]*h, act = (i===activeIdx);
+        ctx.strokeStyle = act ? 'rgba(111,195,201,0.95)' : 'rgba(140,160,180,0.28)';
+        ctx.strokeRect(x-3.5, y-3.5, 7, 7);
+        ctx.font = '9px "Share Tech Mono", monospace';
+        ctx.fillStyle = act ? 'rgba(111,195,201,0.9)' : 'rgba(140,160,180,0.45)';
+        ctx.fillText(waypoints[i-1].id, x+7, y-4);
+      }
+      // 本舰
+      const sx = pts[0][0]*w, sy = pts[0][1]*h;
+      if(throttle.value > 2){
+        const g = ctx.createRadialGradient(sx,sy,1,sx,sy,14+throttle.value*0.12);
+        g.addColorStop(0,'rgba(111,195,201,0.35)'); g.addColorStop(1,'rgba(111,195,201,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(sx,sy,14+throttle.value*0.12,0,7); ctx.fill();
+      }
+      ctx.save(); ctx.translate(sx,sy);
+      const ang = Math.atan2(pts[1][1]*h-sy, pts[1][0]*w-sx);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#dfe8ef';
+      ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(-6,-5); ctx.lineTo(-3,0); ctx.lineTo(-6,5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    /* ================= 战术雷达 Canvas ================= */
+    const radarCanvas = ref(null);
+    const firePing = ref(0);
+    const lockP = ref(0), locked = ref(false);
+    const blips = [
+      {ang:0.55, r:0.44, kind:'hostile'},
+      {ang:2.15, r:0.28, kind:'neutral'},
+      {ang:3.90, r:0.58, kind:'unknown'},
+      {ang:5.20, r:0.50, kind:'neutral'},
+    ];
+    let raf2 = null, sweep = 0;
+    function drawRadar(ts){
+      raf2 = requestAnimationFrame(drawRadar);
+      const cv = radarCanvas.value; if(!cv) return;
+      const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+      const cx = w/2, cy = h/2, R = Math.min(w,h)/2 - 6;
+      const dt = Math.min(50, ts - (drawRadar._last||ts)); drawRadar._last = ts;
+      sweep = (sweep + dt*0.0016) % (Math.PI*2);
+      ctx.clearRect(0,0,w,h);
+      // 圆环与十字
+      ctx.strokeStyle = 'rgba(140,160,180,0.16)';
+      for(let i=1;i<=3;i++){ ctx.beginPath(); ctx.arc(cx,cy,R*i/3,0,7); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke();
+      // 扫描扇面
+      ctx.fillStyle = 'rgba(111,195,201,0.10)';
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,sweep-0.6,sweep); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(111,195,201,0.7)';
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(sweep)*R, cy+Math.sin(sweep)*R); ctx.stroke();
+      // 目标光点
+      for(let i=0;i<blips.length;i++){
+        const b = blips[i];
+        const jitter = Math.sin(ts*0.001+i*7)*0.015;
+        const bx = cx + Math.cos(b.ang+jitter)*b.r*R, by = cy + Math.sin(b.ang+jitter)*b.r*R;
+        const color = b.kind==='hostile' ? 'rgba(224,86,79,0.9)' : b.kind==='unknown' ? 'rgba(217,164,65,0.9)' : 'rgba(140,160,180,0.7)';
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(bx,by,2.2,0,7); ctx.fill();
+        if(b.kind==='hostile' && locked.value){
+          ctx.strokeStyle = color;
+          ctx.beginPath(); ctx.arc(bx,by,6,0,7); ctx.stroke();
+        }
+      }
+      // 本舰
+      ctx.fillStyle = '#dfe8ef'; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,7); ctx.fill();
+      ctx.strokeStyle = 'rgba(223,232,239,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,6,0,7); ctx.stroke();
+      // 开火扩散波
+      if(firePing.value > 0.01){
+        firePing.value *= (1 - dt*0.004);
+        ctx.strokeStyle = `rgba(224,86,79,${(firePing.value*0.8).toFixed(3)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx,cy,(1-firePing.value)*R+4,0,7); ctx.stroke();
+      }
+    }
+
+    /* ================= 武器系统 ================= */
+    const weapons = reactive([
+      {id:'rail',  cn:'电磁轨道炮',    en:'RAILGUN',       kind:'动能', charge:38,  ammo:96,       max:96,  status:'ready'},
+      {id:'laser', cn:'脉冲激光阵列',  en:'PULSE LASER',   kind:'能量', charge:74,  ammo:Infinity, max:0,   status:'ready'},
+      {id:'torp',  cn:'重型鱼雷管 ×4', en:'TORPEDO TUBES', kind:'制导', charge:0,   ammo:12,       max:12,  status:'ready'},
+      {id:'pd',    cn:'点防御炮阵',    en:'POINT DEFENSE', kind:'拦截', charge:100, ammo:400,      max:400, status:'ready'},
+    ]);
+    const selWeapon = ref('rail');
+    const charging  = ref(false);
+    let chargeTimer = null, lockTimer = null;
+    const selW = computed(()=> weapons.find(w=>w.id===selWeapon.value));
+
+    function selectWeapon(id){ selWeapon.value = id; beep(520,0.04,'square',0.02); }
+    function stopCharge(msg){
+      clearInterval(chargeTimer); chargeTimer = null; charging.value = false;
+      if(msg) pushLog(msg,'ok','火控');
+    }
+    function toggleCharge(){
+      const w = selW.value;
+      if(charging.value){ stopCharge('充能中断'); return; }
+      if(w.charge >= 100){ pushLog(`${w.cn} 已满充能`,'info','火控'); return; }
+      charging.value = true;
+      pushLog(`${w.cn} 开始充能…`,'info','火控');
+      chargeTimer = setInterval(()=>{
+        const ww = selW.value; if(!ww) return;
+        ww.charge = Math.min(100, ww.charge + 7);
+        beep(200 + ww.charge*4, 0.03, 'square', 0.012);
+        if(ww.charge >= 100) stopCharge(`${ww.cn} 充能完毕，随时可开火`);
+      }, 90);
+    }
+    function fireWeapon(){
+      const w = selW.value;
+      if(!w || w.status !== 'ready') return;
+      if(w.charge < 100){ pushLog(`${w.cn} 充能不足（${w.charge}%）`,'warn','火控'); beep(200,0.12,'square',0.04); return; }
+      if(w.ammo !== Infinity && w.ammo <= 0){ pushLog(`${w.cn} 弹药耗尽`,'crit','火控'); return; }
+      if(w.ammo !== Infinity) w.ammo--;
+      w.charge = 0;
+      firePing.value = 1;
+      firing.value = true; setTimeout(()=> firing.value = false, 320);
+      pushLog(
+        `${w.cn} 开火 → ${locked.value ? '已锁定目标 T-04 · 命中概率 97%' : '目标 T-04'}`,
+        locked.value ? 'ok' : 'cmd', '火控'
+      );
+      beep(1500,0.16,'sawtooth',0.05);
+      setTimeout(()=> beep(700,0.1,'square',0.03), 120);
+    }
+    function toggleLock(){
+      if(locked.value){
+        locked.value = false; lockP.value = 0;
+        pushLog('目标锁定解除','info','火控'); return;
+      }
+      if(lockTimer) return;
+      pushLog('正在锁定目标 T-04 …','info','火控');
+      lockTimer = setInterval(()=>{
+        lockP.value = Math.min(100, lockP.value + 4);
+        if(lockP.value >= 100){
+          clearInterval(lockTimer); lockTimer = null;
+          locked.value = true;
+          pushLog('目标 T-04 已锁定','ok','火控');
+          beep(880,0.12,'sine',0.05);
+        }
+      }, 80);
+    }
+
+    /* ================= 命令系统 ================= */
+    const orders = reactive({ engines:false, warp:false, shield:false, stealth:false });
+    const cmdButtons = [
+      {key:'engines', cn:'引擎点火',  en:'ENGINES'},
+      {key:'warp',    cn:'跃迁就绪',  en:'WARP READY'},
+      {key:'shield',  cn:'护盾展开',  en:'SHIELD'},
+      {key:'stealth', cn:'电子静默',  en:'EM SILENCE'},
+    ];
+    const ORDER_MSG = {
+      engines:{ on:'主推进器点火成功，输出 12%',          off:'引擎停车，转入惯性滑行' },
+      warp:   { on:'跃迁引擎充能中，预计 90 秒后可用',    off:'跃迁引擎解除就绪' },
+      shield: { on:'护盾阵列展开，覆盖 100%',             off:'护盾回收，转入装甲直射防护' },
+      stealth:{ on:'全频段发射关闭，进入电子静默',        off:'电子静默解除，恢复通信' },
+    };
+    function toggleOrder(key){
+      orders[key] = !orders[key];
+      pushLog(ORDER_MSG[key][orders[key] ? 'on':'off'], orders[key] ? 'ok':'info', '舰长');
+      beep(orders[key] ? 640 : 420, 0.07, 'square', 0.035);
+    }
+    function alarm(){
+      setAlert('combat');
+      pushLog('紧急警报！全舰进入作战状态','crit','舰长');
+      beep(120,0.3,'sawtooth',0.08);
+      setTimeout(()=> beep(120,0.3,'sawtooth',0.08), 350);
+    }
+    function setAlert(k){
+      if(alertLevel.value === k) return;
+      alertLevel.value = k;
+      const lb = alertLevels.find(l=>l.key===k).label;
+      pushLog(`战备等级切换 →「${lb}」`,'cmd','舰长');
+      beep(700,0.08,'square',0.03);
+    }
+
+    const sysLeds = computed(()=>[
+      {key:'reactor', label:'反应堆', on:true},
+      {key:'shield',  label:'护盾',   on:orders.shield},
+      {key:'nav',     label:'导航',   on:true},
+    ]);
+
+    /* ================= 任务 ================= */
+    const phases   = ['出航','巡航','抵近','观测','返航'];
+    const phaseIdx = ref(1);
+    const missionPct = computed(()=> Math.round((phaseIdx.value+1)/phases.length*100));
+    function advPhase(){
+      if(phaseIdx.value >= phases.length-1){
+        pushLog('任务阶段已全部完成，等待返航指令','warn','任务'); return;
+      }
+      phaseIdx.value++;
+      pushLog(`任务阶段推进 →「${phases[phaseIdx.value]}」`,'cmd','任务');
+      beep(740,0.06,'sine',0.04);
+    }
+
+    /* ================= AI 副官 ================= */
+    const aiPool = [
+      '检测到前方小行星带密度上升 12%，建议降低巡航速度。',
+      '反应堆输出稳定，当前负载 62%，热交换正常。',
+      '目标 T-04 轨迹无异常，相对速度 -2.3 km/s。',
+      '备用通信链路已建立，信号强度良好。',
+      '环境辐射读数正常，舱外温度 -183°C。',
+    ];
+    const aiText = ref('');
+    let aiTimer = null, aiWait = null;
+    function runAi(){
+      const line = aiPool[Math.floor(Math.random()*aiPool.length)];
+      aiText.value = '';
+      let i = 0;
+      aiTimer = setInterval(()=>{
+        i++; aiText.value = line.slice(0,i);
+        if(i >= line.length){ clearInterval(aiTimer); aiWait = setTimeout(runAi, 14000); }
+      }, 60);
+    }
+
+    /* ================= 滚动播报 / 随机事件 / 数据漂移 ================= */
+    const tickPool = ['反应堆负载正常','导航星历已同步','护盾阵列待命','武器系统自检通过','生命维持 98%','推进剂余量 73%','通信阵列正常','AI 副官在线'];
+    const tickerText = ref(tickPool[0]);
+    let tickTimer = null, evtTimer = null, clockTimer = null, ti = 0;
+    const events = [
+      {m:'散热回路负载升至 78%，一切正常', t:'warn'},
+      {m:'深空探测器 T-04 信号衰减 12%',   t:'warn'},
+      {m:'舷窗防护罩完成例行检查',         t:'info'},
+      {m:'通信链路切换至备份信道',         t:'info'},
+      {m:'舱压稳定，湿度 41%',             t:'info'},
+      {m:'微流星撞击预警解除',             t:'warn'},
+      {m:'主计算机完成碎片整理',           t:'info'},
+    ];
+    const shieldPct = ref(98);
+    const shieldBroken = ref(false);
+    const reactorLoad = computed(()=> Math.min(100, Math.round(40 + throttle.value*0.55)));
+
+    function randomEvent(){
+      const e = events[Math.floor(Math.random()*events.length)];
+      pushLog(e.m, e.t, '系统');
+    }
+    function drift(){
+      heading.value   = (heading.value + (Math.random()-0.5)*0.6 + 360) % 360;
+      stability.value = Math.min(100, Math.max(96, stability.value + (Math.random()-0.5)*0.3));
+      if(Math.random() < 0.3) fuel.value = Math.max(0, fuel.value - 0.02);
+      if(orders.shield && alertLevel.value === 'combat'){
+        shieldPct.value = Math.max(0, shieldPct.value - 0.08);
+        if(shieldPct.value <= 0 && !shieldBroken.value){ shieldBroken.value = true; pushLog('护盾能量耗尽！','crit','系统'); }
+      }
+      ti = (ti+1) % tickPool.length; tickerText.value = tickPool[ti];
+    }
+
+    /* ================= 键盘快捷键 ================= */
+    function onKey(e){
+      if(!bootDone.value) return;
+      if(e.key === '1')      focus.value = 'nav';
+      else if(e.key === '2') focus.value = 'cmd';
+      else if(e.key === '3') focus.value = 'wpn';
+      else if(e.key === ' '){ e.preventDefault(); fireWeapon(); }
+    }
+
+    /* ================= 挂载 / 卸载 ================= */
+    onMounted(()=>{
+      tickClock();
+      clockTimer = setInterval(tickClock, 1000);
+      stars = Array.from({length:150}, ()=>({x:Math.random()*2-1, y:Math.random()*2-1, z:Math.random()*0.95+0.05}));
+      sizeCanvas();
+      raf  = requestAnimationFrame(drawStars);
+      raf2 = requestAnimationFrame(drawRadar);
+      window.addEventListener('resize', sizeCanvas);
+      window.addEventListener('pointerdown', ensureAudio, {once:true});
+      window.addEventListener('keydown', onKey);
+      runBoot();
+      runAi();
+      tickTimer = setInterval(randomEvent, 20000);
+      evtTimer  = setInterval(drift, 2400);
+      pushLog('导航星历同步完成','info','系统');
+      pushLog('武器子系统自检通过','info','系统');
+      pushLog('AI 副官已上线','ok','系统');
+    });
+    onUnmounted(()=>{
+      cancelAnimationFrame(raf); cancelAnimationFrame(raf2);
+      clearInterval(bootTimer);  clearInterval(chargeTimer); clearInterval(lockTimer);
+      clearInterval(tickTimer);  clearInterval(evtTimer); clearInterval(clockTimer);
+      clearInterval(aiTimer);    clearTimeout(aiWait);
+      window.removeEventListener('resize', sizeCanvas);
+      window.removeEventListener('keydown', onKey);
+    });
+
+    return {
+      alertLevel, alertLevels, setAlert, sound, toggleSound, focus, firing,
+      sysLeds,
+      shipTime, shipDate, log, bootDone, bootText, skipBoot,
+      throttle, heading, fuelPct, stability, speedKm, navState, navStateCls,
+      waypoints, setWp, starCanvas, radarCanvas,
+      weapons, selW, selectWeapon, charging, toggleCharge, fireWeapon,
+      lockP, locked, toggleLock,
+      orders, cmdButtons, toggleOrder, alarm,
+      phases, phaseIdx, advPhase, missionPct,
+      aiText, tickerText, reactorLoad, shieldPct,
+    };
+  }
+});
+/* 渲染错误浮层：方便排查，正常情况不会出现 */
+__app.config.errorHandler = function(err, instance, info){
+  try{
+    let box = document.getElementById('errbox');
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'errbox';
+      box.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:999;max-width:80vw;padding:8px 12px;background:rgba(40,10,12,.95);border:1px solid #e0564f;color:#ffd9d6;font-family:monospace;font-size:11px;line-height:1.6;white-space:pre-wrap';
+      document.body.appendChild(box);
+    }
+    box.textContent = 'RUNTIME ERROR: ' + (err && err.message ? err.message : String(err)) + (info ? '\n[in ' + info + ']' : '');
+  }catch(e){}
+};
+__app.mount('#app');
+</script>
+</body>
+</html>
