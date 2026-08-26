@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
-<title>舰长控制台 /CAPTAIN CONSOLE</title>
+<title>星舰 · 舰长控制台 / STARSHIP · CAPTAIN CONSOLE</title>
 <!--
   技术说明 / TECH STACK
   · 框架：Vue 3（CDN 全局构建，单文件即可运行）
@@ -53,23 +53,25 @@
 
   /* ---------- 外壳布局 ---------- */
   .shell{
-    display:grid;grid-template-rows:46px 1fr 34px;gap:8px;
-    height:100vh;padding:8px;
+    display:grid;grid-template-rows:46px minmax(0,1fr) 34px;gap:8px;
+    height:100vh;padding:8px;overflow:hidden;
   }
   .shell.mode-alert{--acc:#d9a441}
   .shell.mode-combat{--acc:#e0564f}
   .main{
     display:grid;
     grid-template-columns:minmax(300px,360px) minmax(340px,1fr) minmax(320px,380px);
-    gap:8px;min-height:0;
+    grid-template-rows:minmax(0,1fr);
+    gap:8px;min-height:0;overflow:hidden;
   }
 
   /* ---------- 面板通用 ---------- */
   .panel{
     background:linear-gradient(180deg, rgba(148,168,190,.035), rgba(148,168,190,0) 42%), var(--panel);
     border:1px solid var(--line);
-    display:flex;flex-direction:column;min-height:0;
-    position:relative;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    height:100%;
+    position:relative;overflow:hidden;
     transition:border-color .25s, box-shadow .25s;
   }
   .panel.focused{border-color:rgba(111,195,201,.38)}
@@ -95,8 +97,8 @@
   .ph-state.on{color:var(--acc);text-shadow:0 0 8px rgba(111,195,201,.6)}
   .mode-combat .ph-state{color:var(--crit);text-shadow:0 0 8px rgba(224,86,79,.6);animation:blink 1.2s step-end infinite}
 
-  .panel-body{flex:1;min-height:0;position:relative}
-  .panel-foot{border-top:1px solid var(--line2);padding:8px 10px;flex:none}
+  .panel-body{flex:1;min-height:150px;position:relative}
+  .panel-foot{border-top:1px solid var(--line2);padding:8px 10px;flex:0 1 auto;min-height:0;overflow-y:auto}
 
   /* ---------- 顶栏 ---------- */
   .topbar{
@@ -184,7 +186,7 @@
   .wp .wp-meta{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);text-align:right}
 
   /* ---------- 命令面板 ---------- */
-  .cmd-body{display:flex;flex-direction:column;padding:10px;gap:10px;overflow-y:auto;height:100%}
+  .cmd-body{display:flex;flex-direction:column;padding:10px;gap:10px;overflow-y:auto;flex:1;min-height:0}
   .mission{border:1px solid var(--line2);padding:9px 11px;flex:none}
   .mission-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
   .mission-name{font-size:12px;letter-spacing:.14em}
@@ -231,8 +233,8 @@
   @keyframes blink{50%{opacity:0}}
 
   .log-box{flex:1;min-height:0;display:flex;flex-direction:column}
-  .log-title{font-size:9px;color:var(--dim);letter-spacing:.24em;padding:2px 0 6px}
-  .log-feed{flex:1;min-height:0;overflow-y:auto;border:1px solid var(--line2);background:rgba(0,0,0,.25);padding:6px 8px}
+  .log-title{font-size:9px;color:var(--dim);letter-spacing:.24em;padding:2px 0 6px;flex:none}
+  .log-feed{flex:1;min-height:56px;overflow-y:auto;border:1px solid var(--line2);background:rgba(0,0,0,.25);padding:6px 8px}
   .log-item{
     display:flex;gap:8px;font-family:'Share Tech Mono',monospace;font-size:10px;
     padding:3px 0;border-left:2px solid transparent;padding-left:6px;line-height:1.5;
@@ -252,7 +254,7 @@
   .log-item.t-info .lm{color:var(--dim2)}
 
   /* ---------- 武器面板 ---------- */
-  .wpn-body{display:flex;flex-direction:column;gap:8px;padding:10px;overflow-y:auto;height:100%}
+  .wpn-body{display:flex;flex-direction:column;gap:8px;padding:10px;overflow-y:auto;flex:1;min-height:0}
   .radar-wrap{position:relative;height:150px;flex:none;border:1px solid var(--line2);background:rgba(0,0,0,.25)}
   .radar-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
   .radar-tag{position:absolute;top:6px;left:8px;font-size:9px;color:var(--dim);letter-spacing:.2em;z-index:1}
@@ -343,11 +345,38 @@
   .bootfade-enter-active,.bootfade-leave-active{transition:opacity .6s ease}
   .bootfade-enter-from,.bootfade-leave-to{opacity:0}
 
-  /* ---------- 窄屏降级：三栏纵向堆叠 ---------- */
+  /* ---------- 星舰命名覆盖层 ---------- */
+  .naming{
+    position:fixed;inset:0;z-index:60;background:rgba(3,5,8,.985);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .naming-box{width:min(460px,88vw)}
+  .naming-title{font-size:20px;letter-spacing:.3em;color:#e6ecf1;margin-bottom:6px}
+  .naming-sub{font-size:10px;color:var(--dim);letter-spacing:.18em;margin-bottom:24px}
+  .naming-input{
+    width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-bottom:1px solid rgba(111,195,201,.55);
+    color:#e6ecf1;font-size:18px;letter-spacing:.22em;padding:11px 12px;outline:none;transition:border-color .2s;
+    font-family:'Noto Sans SC','Microsoft YaHei',sans-serif;
+  }
+  .naming-input:focus{border-color:var(--acc)}
+  .naming-preview{font-size:11px;color:var(--dim);letter-spacing:.14em;margin:12px 2px 0}
+  .naming-preview b{color:var(--acc);font-weight:400;letter-spacing:.2em}
+  .naming-btn{
+    width:100%;margin-top:16px;padding:12px;background:transparent;
+    border:1px solid rgba(111,195,201,.5);color:var(--acc);
+    font-size:13px;letter-spacing:.3em;cursor:pointer;transition:all .2s;
+  }
+  .naming-btn:hover{background:rgba(111,195,201,.12);color:#e6f6f7}
+  .naming-hint{font-size:9px;color:var(--dim);letter-spacing:.14em;text-align:center;margin-top:14px}
+
+  /* ---------- 窄屏降级：三栏纵向堆叠（命令板块排最后，避免日志撑高影响航行） ---------- */
   @media (max-width: 1000px){
     .shell{grid-template-rows:auto 1fr auto}
     .main{grid-template-columns:1fr;overflow-y:auto;padding-bottom:8px}
     .panel{min-height:460px}
+    .wpn{order:2}
+    .cmd{order:3}
+    .log-feed{max-height:200px}
     .topbar{grid-template-columns:1fr;gap:6px;padding:8px 12px}
     .top-center{justify-content:flex-start}
     .top-right{justify-content:space-between}
@@ -355,13 +384,30 @@
 </style>
 </head>
 <body>
-<div id="app" v-cloak :class="['shell','mode-'+alertLevel]">
+<div id="app" v-cloak>
+  <!-- 模板根：外壳层（class 绑定由 Vue 编译处理，不能写在容器上） -->
+  <div :class="['shell','mode-'+alertLevel, {fired: firing}]">
+
+  <!-- 星舰命名（首次登舰 / 右上角 ✎ 修改） -->
+  <transition name="bootfade">
+    <div class="naming" v-if="showNaming">
+      <div class="naming-box">
+        <div class="boot-logo">▣<span>SHIP REGISTRATION</span></div>
+        <div class="naming-title">为你的星舰命名</div>
+        <div class="naming-sub">首次登舰需完成舰名登记 · 将保存在本机 localStorage</div>
+        <input class="naming-input" v-model.trim="nameDraft" maxlength="12" placeholder="输入舰名" @keyup.enter="confirmName" autofocus>
+        <div class="naming-preview">预览 <b>{{ previewName }}</b></div>
+        <button class="naming-btn" @click="confirmName">确认命名 · CONFIRM</button>
+        <div class="naming-hint">已登记舰名可在右上角 ✎ 修改</div>
+      </div>
+    </div>
+  </transition>
 
   <!-- 开机自检 -->
   <transition name="bootfade">
-    <div class="boot" v-if="!bootDone" @click="skipBoot">
+    <div class="boot" v-if="!bootDone && !showNaming" @click="skipBoot">
       <div class="boot-box">
-        <div class="boot-logo">▣<span>CHI XIAO · SHIPBOARD COMPUTER v4.2</span></div>
+        <div class="boot-logo">▣<span>{{ enTag }} · SHIPBOARD COMPUTER v4.2</span></div>
         <pre class="boot-lines">{{ bootText }}</pre>
         <div class="boot-hint">点击任意位置跳过 · CLICK TO SKIP</div>
       </div>
@@ -373,7 +419,7 @@
     <div class="brand">
       <div class="brand-mark"><b>▣</b></div>
       <div>
-        <div class="brand-name">赤霄号 <span>CHI XIAO</span></div>
+        <div class="brand-name">{{ displayName }}<span>{{ enTag }}</span></div>
         <div class="brand-sub">CNS-07 · 深空战术母舰 · DEEP SPACE VESSEL</div>
       </div>
     </div>
@@ -390,6 +436,7 @@
         <div class="clock-time">{{ shipTime }}</div>
         <div class="clock-date">{{ shipDate }} · UTC+8</div>
       </div>
+      <button class="icon-btn" @click="openRename" title="舰名设置">✎</button>
       <button class="icon-btn" :class="{on:sound}" @click="toggleSound" title="音效开关">♪</button>
     </div>
   </header>
@@ -569,26 +616,97 @@
       <div class="gbar warn"><label>燃料 <b>{{ fuelPct.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:fuelPct+'%'}"></i></div></div>
     </div>
   </footer>
+  </div>
 
 </div>
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>
-/* CDN 加载失败的降级提示（离线打开时可见） */
-setTimeout(function(){
-  if(!window.Vue){
+/* ============================================================
+   Vue 加载器：CDN 优先；失败或 4 秒超时 → 回退本地相对路径
+   ./libs/vue.global.prod.js（离线也能运行）
+   ============================================================ */
+(function(){
+  var urls = ['https://unpkg.com/vue@3/dist/vue.global.prod.js', './libs/vue.global.prod.js'];
+  var settled = false;
+  function fatal(){
     var app = document.getElementById('app');
     if(app){
       app.removeAttribute('v-cloak');
       app.innerHTML = '<div style="display:grid;place-items:center;height:100vh;color:#d6dde4;font-family:monospace;text-align:center;line-height:2">' +
-        '无法加载 Vue 3 运行时（本页通过 CDN 加载，需联网访问）。<br>' +
-        'Vue 3 runtime failed to load from CDN — please check your network connection.<br>' +
-        '<span style="color:#5f6b78">文件：captain-console.html · 赤霄号舰长控制台</span></div>';
+        '无法加载 Vue 运行时：CDN 与本地 libs/vue.global.prod.js 均不可用。<br>' +
+        'Vue runtime unavailable — CDN and local fallback both failed.</div>';
     }
   }
-}, 6000);
+  function showErr(e){
+    try{
+      var box = document.getElementById('errbox');
+      if(!box){
+        box = document.createElement('div');
+        box.id = 'errbox';
+        box.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:999;max-width:80vw;padding:8px 12px;background:rgba(40,10,12,.95);border:1px solid #e0564f;color:#ffd9d6;font-family:monospace;font-size:11px;line-height:1.6;white-space:pre-wrap';
+        document.body.appendChild(box);
+      }
+      box.textContent = 'RUNTIME ERROR: ' + (e && e.message ? e.message : String(e));
+    }catch(_){}
+  }
+  function tryLoad(i){
+    if(i >= urls.length){ if(!settled) fatal(); return; }
+    var s = document.createElement('script');
+    var t = null;
+    if(i === 0){
+      /* CDN 超时保护：4 秒未加载完成则切换到本地 */
+      t = setTimeout(function(){ if(!settled){ settled = true; tryLoad(i+1); } }, 4000);
+    }
+    s.onload = function(){
+      clearTimeout(t);
+      if(settled) return;
+      settled = true;
+      try{ startApp(); }catch(e){ showErr(e); }
+    };
+    s.onerror = function(){
+      clearTimeout(t);
+      if(settled) return;
+      settled = true;
+      tryLoad(i+1);
+    };
+    s.src = urls[i];
+    document.head.appendChild(s);
+  }
+  tryLoad(0);
+})();
 </script>
 <script>
+/* ============================================================
+   字体加载：CDN（Google Fonts）优先；不可用时注入本地相对路径
+   ./fonts/*.woff2 的 @font-face（文件缺失时自动落到系统字体）
+   ============================================================ */
+(function(){
+  function injectLocalFonts(){
+    var st = document.createElement('style');
+    st.textContent =
+      "@font-face{font-family:'Share Tech Mono';font-style:normal;font-weight:400;src:url('./fonts/share-tech-mono.woff2') format('woff2');}" +
+      "@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300;src:url('./fonts/noto-sans-sc-300.woff2') format('woff2');}" +
+      "@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:400;src:url('./fonts/noto-sans-sc-400.woff2') format('woff2');}" +
+      "@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:500;src:url('./fonts/noto-sans-sc-500.woff2') format('woff2');}";
+    document.head.appendChild(st);
+  }
+  function checkAndFallback(){
+    try{
+      if(!document.fonts || !document.fonts.check) return;
+      var need = !document.fonts.check('12px "Share Tech Mono"') || !document.fonts.check('12px "Noto Sans SC"');
+      if(need) injectLocalFonts();
+    }catch(e){ injectLocalFonts(); }
+  }
+  try{
+    Promise.race([
+      document.fonts.ready,
+      new Promise(function(r){ setTimeout(r, 2500); })
+    ]).then(checkAndFallback);
+  }catch(e){ checkAndFallback(); }
+})();
+</script>
+<script>
+function startApp(){
 const { createApp, ref, reactive, computed, onMounted, onUnmounted } = Vue;
 
 const __app = createApp({
@@ -642,36 +760,80 @@ const __app = createApp({
     }
     function toggleSound(){ sound.value = !sound.value; if(sound.value) beep(880,0.06,'square',0.04); }
 
+    /* ================= 星舰命名（localStorage 持久化） ================= */
+    const NAME_KEY = 'captainConsole.shipName';
+    const shipName  = ref('');
+    try{ shipName.value = localStorage.getItem(NAME_KEY) || ''; }catch(e){}
+    const nameDraft  = ref(shipName.value);
+    const showNaming = ref(false);
+    const displayName = computed(()=>{
+      const n = shipName.value.trim();
+      if(!n) return '';
+      return n.endsWith('号') ? n : n + '号';
+    });
+    const enTag = computed(()=>{
+      const n = shipName.value.trim();
+      if(!n) return 'STARSHIP';
+      return /[\u4e00-\u9fa5]/.test(n) ? 'STARSHIP' : n.toUpperCase();
+    });
+    const previewName = computed(()=>{
+      const n = nameDraft.value.trim();
+      if(!n) return '——';
+      return n.endsWith('号') ? n : n + '号';
+    });
+    function confirmName(){
+      const v = nameDraft.value.trim();
+      if(!v){ beep(200,0.1,'square',0.05); return; }
+      shipName.value = v;
+      try{ localStorage.setItem(NAME_KEY, v); }catch(e){}
+      showNaming.value = false;
+      document.title = `${displayName.value} · 舰长控制台`;
+      pushLog(`舰名登记完成：「${displayName.value}」`,'ok','舰长');
+      beep(880,0.1,'sine',0.05);
+      runBoot();
+    }
+    function openRename(){
+      nameDraft.value = shipName.value;
+      showNaming.value = true;
+      beep(520,0.05,'square',0.02);
+    }
+
     /* ================= 开机自检 ================= */
     const bootDone = ref(false);
     const bootText = ref('');
-    const BOOT = [
-      '赤霄号 · 舰载计算机系统',
-      'CHI XIAO · SHIPBOARD COMPUTER',
-      '',
-      '> 加载核心模块 .............. 完成',
-      '> 反应堆并网 ............... 完成',
-      '> 导航星历同步 ............. 完成',
-      '> 武器子系统自检 ........... 完成',
-      '> 生命维持系统 ............. 完成',
-      '> 全系统自检通过 · ALL SYSTEMS NOMINAL',
-      '',
-      '欢迎登舰，舰长。',
-    ].join('\n');
+    let bootStarted = false;
+    function bootLines(){
+      return [
+        `${displayName.value} · 舰载计算机系统`,
+        `${enTag.value} · SHIPBOARD COMPUTER`,
+        '',
+        '> 加载核心模块 .............. 完成',
+        '> 反应堆并网 ............... 完成',
+        '> 导航星历同步 ............. 完成',
+        '> 武器子系统自检 ........... 完成',
+        '> 生命维持系统 ............. 完成',
+        '> 全系统自检通过 · ALL SYSTEMS NOMINAL',
+        '',
+        '欢迎登舰，舰长。',
+      ].join('\n');
+    }
     let bootTimer = null;
     function runBoot(){
+      if(bootStarted) return;
+      bootStarted = true;
+      const full = bootLines();
       let i = 0;
       bootTimer = setInterval(()=>{
         i++;
-        bootText.value = BOOT.slice(0, i);
-        if(i >= BOOT.length){
+        bootText.value = full.slice(0, i);
+        if(i >= full.length){
           clearInterval(bootTimer);
           setTimeout(()=>{ bootDone.value = true; pushLog('舰载计算机上线 · ALL SYSTEMS NOMINAL','ok'); }, 500);
         }
       }, 26);
     }
     function skipBoot(){
-      if(bootDone.value) return;
+      if(bootDone.value || showNaming.value) return;
       clearInterval(bootTimer);
       bootDone.value = true;
       pushLog('舰长跳过自检，接管控制台','cmd','舰长');
@@ -701,7 +863,7 @@ const __app = createApp({
 
     /* ================= 星海 Canvas ================= */
     const starCanvas = ref(null);
-    let stars = [], raf = null;
+    let stars = [], raf = null, canvasRO = null;
     function sizeCanvas(){
       const cv = starCanvas.value, rc = radarCanvas.value;
       if(cv && cv.parentElement){ cv.width = cv.parentElement.clientWidth;  cv.height = cv.parentElement.clientHeight; }
@@ -993,21 +1155,35 @@ const __app = createApp({
       clockTimer = setInterval(tickClock, 1000);
       stars = Array.from({length:150}, ()=>({x:Math.random()*2-1, y:Math.random()*2-1, z:Math.random()*0.95+0.05}));
       sizeCanvas();
+      /* 画布尺寸跟随容器：字体加载、布局变化、窗口缩放后自动同步 */
+      if(window.ResizeObserver){
+        canvasRO = new ResizeObserver(()=> sizeCanvas());
+        if(starCanvas.value && starCanvas.value.parentElement) canvasRO.observe(starCanvas.value.parentElement);
+        if(radarCanvas.value && radarCanvas.value.parentElement) canvasRO.observe(radarCanvas.value.parentElement);
+      }
       raf  = requestAnimationFrame(drawStars);
       raf2 = requestAnimationFrame(drawRadar);
       window.addEventListener('resize', sizeCanvas);
       window.addEventListener('pointerdown', ensureAudio, {once:true});
       window.addEventListener('keydown', onKey);
-      runBoot();
       runAi();
       tickTimer = setInterval(randomEvent, 20000);
       evtTimer  = setInterval(drift, 2400);
       pushLog('导航星历同步完成','info','系统');
       pushLog('武器子系统自检通过','info','系统');
       pushLog('AI 副官已上线','ok','系统');
+      if(shipName.value){
+        document.title = `${displayName.value} · 舰长控制台`;
+        pushLog(`欢迎回来，舰长。「${displayName.value}」已就绪`,'ok','系统');
+        runBoot();
+      }else{
+        document.title = '星舰 · 舰长控制台';
+        showNaming.value = true;
+      }
     });
     onUnmounted(()=>{
       cancelAnimationFrame(raf); cancelAnimationFrame(raf2);
+      if(canvasRO) canvasRO.disconnect();
       clearInterval(bootTimer);  clearInterval(chargeTimer); clearInterval(lockTimer);
       clearInterval(tickTimer);  clearInterval(evtTimer); clearInterval(clockTimer);
       clearInterval(aiTimer);    clearTimeout(aiWait);
@@ -1018,6 +1194,7 @@ const __app = createApp({
     return {
       alertLevel, alertLevels, setAlert, sound, toggleSound, focus, firing,
       sysLeds,
+      nameDraft, showNaming, displayName, enTag, previewName, confirmName, openRename,
       shipTime, shipDate, log, bootDone, bootText, skipBoot,
       throttle, heading, fuelPct, stability, speedKm, navState, navStateCls,
       waypoints, setWp, starCanvas, radarCanvas,
@@ -1043,6 +1220,7 @@ __app.config.errorHandler = function(err, instance, info){
   }catch(e){}
 };
 __app.mount('#app');
+}
 </script>
 </body>
 </html>
