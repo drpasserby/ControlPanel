@@ -198,7 +198,7 @@
 
   .ship-wrap{display:flex;justify-content:center;padding:2px 0 6px;flex:none}
   .ship{width:180px;height:90px}
-  .warp-ring{animation:spin 7s linear infinite;transform-origin:70px 35px}
+  .shield-ring{animation:spin 7s linear infinite;transform-origin:70px 35px}
   @keyframes spin{to{transform:rotate(360deg)}}
 
   .orders{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}
@@ -284,7 +284,7 @@
   .w-charge i.full{background:var(--ok);box-shadow:0 0 6px rgba(143,191,122,.8)}
   .w-charge span{position:absolute;right:0;top:-13px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim)}
 
-  .fire-control{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;flex:none;margin-top:2px}
+  .fire-control{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none;margin-top:2px}
   .fire-btn{
     padding:9px 6px;text-align:center;cursor:pointer;font-size:12px;letter-spacing:.2em;
     background:rgba(148,168,190,.05);border:1px solid var(--line);color:var(--dim2);
@@ -501,7 +501,7 @@
                 <stop offset="0" stop-color="#6fc3c9"/><stop offset="1" stop-color="rgba(111,195,201,0)"/>
               </linearGradient>
             </defs>
-            <circle v-if="orders.warp" class="warp-ring" cx="70" cy="35" r="30" fill="none" stroke="#6fc3c9" stroke-opacity=".5" stroke-dasharray="10 8"/>
+            <circle v-if="orders.shield" class="shield-ring" cx="70" cy="35" r="30" fill="none" stroke="#6fc3c9" stroke-opacity=".5" stroke-dasharray="10 8"/>
             <rect x="14" y="22" width="92" height="26" rx="13" fill="#141a22" stroke="#6fc3c9" stroke-opacity=".55"/>
             <path d="M14 35 L6 26 L6 44 Z" fill="#141a22" stroke="#6fc3c9" stroke-opacity=".55"/>
             <rect x="30" y="27" width="26" height="16" rx="3" fill="#0d1b20" stroke="#6fc3c9" stroke-opacity=".8"/>
@@ -583,7 +583,6 @@
             {{ charging?'充能中…':'充能' }}<em>CHARGE</em>
           </button>
           <button class="fire-btn shoot" @click="fireWeapon">开火<em>FIRE</em></button>
-          <button class="fire-btn" :disabled="!locked" @click="fireWeapon">齐射<em>VOLLEY</em></button>
         </div>
 
       </div>
@@ -873,18 +872,19 @@ const __app = createApp({
         const r = 0.3 + (1-s.z)*1.4;
         ctx.fillRect(sx,sy,r,r);
       }
-      // 航路折线
+      // 航路折线（pts[0]=本舰位置，pts[1..3] 依次对应 WP-01..03）
       const pts = [[0.09,0.84],[0.34,0.62],[0.60,0.42],[0.84,0.20]];
       const activeIdx = waypoints.findIndex(w=>w.active);
+      const targetPt = activeIdx + 1;
       ctx.beginPath();
       ctx.moveTo(pts[0][0]*w, pts[0][1]*h);
-      for(let i=1;i<=activeIdx;i++) ctx.lineTo(pts[i][0]*w, pts[i][1]*h);
+      for(let i=1;i<=targetPt;i++) ctx.lineTo(pts[i][0]*w, pts[i][1]*h);
       ctx.setLineDash([4,7]); ctx.lineDashOffset = -(ts*0.02)%11;
       ctx.strokeStyle = 'rgba(111,195,201,0.55)'; ctx.lineWidth = 1; ctx.stroke();
       ctx.setLineDash([]);
       // 航点标记
       for(let i=1;i<pts.length;i++){
-        const x = pts[i][0]*w, y = pts[i][1]*h, act = (i===activeIdx);
+        const x = pts[i][0]*w, y = pts[i][1]*h, act = (i===targetPt);
         ctx.strokeStyle = act ? 'rgba(111,195,201,0.95)' : 'rgba(140,160,180,0.28)';
         ctx.strokeRect(x-3.5, y-3.5, 7, 7);
         ctx.font = '9px "Share Tech Mono", monospace';
@@ -900,7 +900,7 @@ const __app = createApp({
         ctx.beginPath(); ctx.arc(sx,sy,14+throttle.value*0.12,0,7); ctx.fill();
       }
       ctx.save(); ctx.translate(sx,sy);
-      const ang = Math.atan2(pts[1][1]*h-sy, pts[1][0]*w-sx);
+      const ang = Math.atan2(pts[targetPt][1]*h-sy, pts[targetPt][0]*w-sx);
       ctx.rotate(ang);
       ctx.fillStyle = '#dfe8ef';
       ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(-6,-5); ctx.lineTo(-3,0); ctx.lineTo(-6,5); ctx.closePath(); ctx.fill();
@@ -979,6 +979,11 @@ const __app = createApp({
     }
     function toggleCharge(){
       const w = selW.value;
+      if(w.ammo !== Infinity && w.ammo <= 0){
+        pushLog(`${w.cn} 弹药不足，无法充能`,'warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
       if(charging.value){ stopCharge('充能中断'); return; }
       if(w.charge >= 100){ pushLog(`${w.cn} 已满充能`,'info','火控'); return; }
       charging.value = true;
@@ -993,15 +998,24 @@ const __app = createApp({
     function fireWeapon(){
       const w = selW.value;
       if(!w || w.status !== 'ready') return;
+      if(!locked.value){
+        pushLog('未锁定目标，无法开火','warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(w.ammo !== Infinity && w.ammo <= 0){
+        pushLog(`${w.cn} 弹药不足`,'warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
       if(w.charge < 100){ pushLog(`${w.cn} 充能不足（${w.charge}%）`,'warn','火控'); beep(200,0.12,'square',0.04); return; }
-      if(w.ammo !== Infinity && w.ammo <= 0){ pushLog(`${w.cn} 弹药耗尽`,'crit','火控'); return; }
       if(w.ammo !== Infinity) w.ammo--;
       w.charge = 0;
       firePing.value = 1;
       firing.value = true; setTimeout(()=> firing.value = false, 320);
       pushLog(
-        `${w.cn} 开火 → ${locked.value ? '已锁定目标 T-04 · 命中概率 97%' : '目标 T-04'}`,
-        locked.value ? 'ok' : 'cmd', '火控'
+        `${w.cn} 开火 → 已锁定目标 T-04 · 命中概率 97%`,
+        'ok', '火控'
       );
       beep(1500,0.16,'sawtooth',0.05);
       setTimeout(()=> beep(700,0.1,'square',0.03), 120);
@@ -1039,6 +1053,11 @@ const __app = createApp({
       stealth:{ on:'全频段发射关闭，进入电子静默',        off:'电子静默解除，恢复通信' },
     };
     function toggleOrder(key){
+      if(key === 'engines' && !orders.engines && fuel.value <= 0){
+        pushLog('燃料不足，引擎无法点火','crit','舰长');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
       orders[key] = !orders[key];
       pushLog(ORDER_MSG[key][orders[key] ? 'on':'off'], orders[key] ? 'ok':'info', '舰长');
       beep(orders[key] ? 640 : 420, 0.07, 'square', 0.035);
@@ -1098,6 +1117,7 @@ const __app = createApp({
     ];
     const shieldPct = ref(98);
     const shieldBroken = ref(false);
+    const fuelWarned = ref(false);
     const reactorLoad = computed(()=> Math.min(100, Math.round(40 + throttle.value*0.55)));
 
     function randomEvent(){
@@ -1108,6 +1128,15 @@ const __app = createApp({
       heading.value   = (heading.value + (Math.random()-0.5)*0.6 + 360) % 360;
       stability.value = Math.min(100, Math.max(96, stability.value + (Math.random()-0.5)*0.3));
       if(Math.random() < 0.3) fuel.value = Math.max(0, fuel.value - 0.02);
+      if(fuel.value <= 0 && !fuelWarned.value){
+        fuelWarned.value = true;
+        if(orders.engines){
+          orders.engines = false;
+          pushLog('燃料耗尽！引擎自动停车','crit','系统');
+        }
+        pushLog('燃料不足，引擎无法点火','crit','系统');
+        beep(140,0.25,'sawtooth',0.06);
+      }
       if(orders.shield && alertLevel.value === 'combat'){
         shieldPct.value = Math.max(0, shieldPct.value - 0.08);
         if(shieldPct.value <= 0 && !shieldBroken.value){ shieldBroken.value = true; pushLog('护盾能量耗尽！','crit','系统'); }
