@@ -102,7 +102,7 @@
 
   /* ---------- 顶栏 ---------- */
   .topbar{
-    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;
+    display:grid;grid-template-columns:auto 1fr;align-items:center;gap:16px;
     padding:0 12px;
     border:1px solid var(--line);border-bottom-color:var(--line2);
     background:linear-gradient(180deg, rgba(148,168,190,.04), transparent);
@@ -118,7 +118,6 @@
   .brand-name{font-size:15px;letter-spacing:.34em}
   .brand-name span{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.3em;margin-left:8px}
   .brand-sub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.22em;margin-top:2px}
-  .top-center{display:flex;justify-content:center}
   .alert-switch{display:flex;border:1px solid var(--line)}
   .alert-switch button{
     background:transparent;border:0;color:var(--dim2);
@@ -131,7 +130,7 @@
   .alert-switch button.on{color:#04060a;background:var(--acc);font-weight:500}
   .mode-alert .alert-switch button.on{background:var(--warn)}
   .mode-combat .alert-switch button.on{background:var(--crit)}
-  .top-right{display:flex;align-items:center;gap:14px}
+  .top-right{display:flex;align-items:center;gap:14px;justify-content:flex-end}
   .led{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.12em}
   .led b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
   .led .dot{width:6px;height:6px;border-radius:50%;background:#3a4350}
@@ -188,21 +187,14 @@
   /* ---------- 命令面板 ---------- */
   .cmd-body{display:flex;flex-direction:column;padding:10px;gap:10px;overflow-y:auto;flex:1;min-height:0}
   .mission{border:1px solid var(--line2);padding:9px 11px;flex:none}
-  .mission-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .mission-head{margin-bottom:6px}
   .mission-name{font-size:12px;letter-spacing:.14em}
   .mission-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);margin-left:6px;letter-spacing:.2em}
-  .mission-pct{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--acc)}
-  .mission-desc{font-size:11px;color:var(--dim2);line-height:1.6;margin-bottom:8px}
-  .phase-row{display:flex;align-items:center;gap:0;margin-bottom:8px}
-  .phase{flex:1;text-align:center;font-size:9px;color:var(--dim);letter-spacing:.1em;padding:3px 0;border-bottom:2px solid var(--line2);position:relative}
-  .phase.done{color:var(--dim2);border-color:rgba(111,195,201,.35)}
-  .phase.cur{color:var(--acc);border-color:var(--acc)}
-  .phase.cur::after{content:'';position:absolute;left:50%;bottom:-3px;width:5px;height:5px;background:var(--acc);transform:translateX(-50%) rotate(45deg)}
-  .adv-btn{
-    width:100%;padding:6px;background:transparent;border:1px dashed var(--line);
-    color:var(--dim2);font-size:10px;letter-spacing:.2em;cursor:pointer;transition:all .2s;
-  }
-  .adv-btn:hover{color:var(--acc);border-color:rgba(111,195,201,.5)}
+  .mission-desc{font-size:11px;color:var(--dim2);line-height:1.6}
+  .alert-block{flex:none;border:1px solid var(--line2);padding:8px 10px}
+  .alert-label{font-size:9px;color:var(--dim);letter-spacing:.24em;margin-bottom:6px}
+  .cmd-body .alert-switch{border:0}
+  .cmd-body .alert-switch button{flex:1;padding:8px 0;font-size:11px}
 
   .ship-wrap{display:flex;justify-content:center;padding:2px 0 6px;flex:none}
   .ship{width:180px;height:90px}
@@ -378,7 +370,6 @@
     .cmd{order:3}
     .log-feed{max-height:200px}
     .topbar{grid-template-columns:1fr;gap:6px;padding:8px 12px}
-    .top-center{justify-content:flex-start}
     .top-right{justify-content:space-between}
   }
 </style>
@@ -421,11 +412,6 @@
       <div>
         <div class="brand-name">{{ displayName }}<span>{{ enTag }}</span></div>
         <div class="brand-sub">CNS-07 · 深空战术母舰 · DEEP SPACE VESSEL</div>
-      </div>
-    </div>
-    <div class="top-center">
-      <div class="alert-switch">
-        <button v-for="l in alertLevels" :key="l.key" :class="{on:alertLevel===l.key}" @click="setAlert(l.key)">{{l.label}}</button>
       </div>
     </div>
     <div class="top-right">
@@ -497,13 +483,15 @@
         <div class="mission">
           <div class="mission-head">
             <div class="mission-name">深空侦察 · 任务 S-7<em>MISSION</em></div>
-            <div class="mission-pct">{{ missionPct }}%</div>
           </div>
           <div class="mission-desc">抵近观测目标天体 T-04，采集光谱与引力场数据后返航。</div>
-          <div class="phase-row">
-            <div class="phase" v-for="(p,i) in phases" :key="p" :class="{done:i&lt;phaseIdx, cur:i===phaseIdx}">{{p}}</div>
+        </div>
+
+        <div class="alert-block">
+          <div class="alert-label">战备等级 · ALERT LEVEL</div>
+          <div class="alert-switch">
+            <button v-for="l in alertLevels" :key="l.key" :class="{on:alertLevel===l.key}" @click="setAlert(l.key)">{{l.label}}</button>
           </div>
-          <button class="adv-btn" @click="advPhase">推进任务阶段 · ADVANCE PHASE</button>
         </div>
 
         <div class="ship-wrap">
@@ -1075,19 +1063,6 @@ const __app = createApp({
       {key:'nav',     label:'导航',   on:true},
     ]);
 
-    /* ================= 任务 ================= */
-    const phases   = ['出航','巡航','抵近','观测','返航'];
-    const phaseIdx = ref(1);
-    const missionPct = computed(()=> Math.round((phaseIdx.value+1)/phases.length*100));
-    function advPhase(){
-      if(phaseIdx.value >= phases.length-1){
-        pushLog('任务阶段已全部完成，等待返航指令','warn','任务'); return;
-      }
-      phaseIdx.value++;
-      pushLog(`任务阶段推进 →「${phases[phaseIdx.value]}」`,'cmd','任务');
-      beep(740,0.06,'sine',0.04);
-    }
-
     /* ================= AI 副官 ================= */
     const aiPool = [
       '检测到前方小行星带密度上升 12%，建议降低巡航速度。',
@@ -1201,7 +1176,6 @@ const __app = createApp({
       weapons, selW, selectWeapon, charging, toggleCharge, fireWeapon,
       lockP, locked, toggleLock,
       orders, cmdButtons, toggleOrder, alarm,
-      phases, phaseIdx, advPhase, missionPct,
       aiText, tickerText, reactorLoad, shieldPct,
     };
   }
