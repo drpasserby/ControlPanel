@@ -280,6 +280,7 @@
   .w-ammo{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim2)}
   .w-charge{height:3px;background:rgba(255,255,255,.06);margin-top:6px;position:relative}
   .w-charge i{display:block;height:100%;background:var(--acc);transition:width .1s linear}
+  .w-charge i.cooling{background:var(--warn)}
   .w-charge i.hot{background:var(--warn)}
   .w-charge i.full{background:var(--ok);box-shadow:0 0 6px rgba(143,191,122,.8)}
   .w-charge span{position:absolute;right:0;top:-13px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim)}
@@ -578,8 +579,8 @@
               <span class="w-ammo">{{ w.ammo===Infinity ? '∞' : w.ammo+' / '+w.max }}</span>
             </div>
             <div class="w-charge">
-              <i :class="{hot:w.charge>0&&w.charge<100, full:w.charge>=100}" :style="{width: w.charge+'%'}"></i>
-              <span>{{ w.charge }}%</span>
+              <i :class="{cooling:w.cd>0, hot:w.charge>0&&w.charge<100, full:w.charge>=100}" :style="{width: w.charge+'%'}"></i>
+              <span>{{ w.cd>0 ? '冷却 '+(w.cd/1000).toFixed(1)+'s' : w.charge+'%' }}</span>
             </div>
           </div>
         </div>
@@ -974,10 +975,10 @@ const __app = createApp({
 
     /* ================= 武器系统 ================= */
     const weapons = reactive([
-      {id:'rail',  cn:'电磁轨道炮',    en:'RAILGUN',       kind:'动能', charge:38,  ammo:96,       max:96,  status:'ready'},
-      {id:'laser', cn:'脉冲激光阵列',  en:'PULSE LASER',   kind:'能量', charge:74,  ammo:Infinity, max:0,   status:'ready'},
-      {id:'torp',  cn:'重型鱼雷管 ×4', en:'TORPEDO TUBES', kind:'制导', charge:0,   ammo:12,       max:12,  status:'ready'},
-      {id:'pd',    cn:'点防御炮阵',    en:'POINT DEFENSE', kind:'拦截', charge:100, ammo:400,      max:400, status:'ready'},
+      {id:'rail',  cn:'电磁轨道炮',    en:'RAILGUN',       kind:'动能', charge:38,  ammo:96,       max:96,  status:'ready', cd:0},
+      {id:'laser', cn:'脉冲激光阵列',  en:'PULSE LASER',   kind:'能量', charge:74,  ammo:Infinity, max:0,   status:'ready', cd:0},
+      {id:'torp',  cn:'重型鱼雷管 ×4', en:'TORPEDO TUBES', kind:'制导', charge:0,   ammo:12,       max:12,  status:'ready', cd:0},
+      {id:'pd',    cn:'点防御炮阵',    en:'POINT DEFENSE', kind:'拦截', charge:100, ammo:400,      max:400, status:'ready', cd:0},
     ]);
     const selWeapon = ref('rail');
     const charging  = ref(false);
@@ -1053,6 +1054,17 @@ const __app = createApp({
     /* ================= 自动火控（持续开火 / 智能作战） ================= */
     const autoMode = ref('none');
     let autoTimer = null;
+    const AUTO_TICK = 150;                  // 自动火控驱动节拍（ms）
+    const WEAPON_CD = {                     // 各武器冷却区间（ms）：武器间不同，均 ≤ 3s
+      rail:  { min: 2000, max: 2600 },
+      laser: { min: 600,  max: 1000 },
+      torp:  { min: 2300, max: 2900 },
+      pd:    { min: 1000, max: 1500 },
+    };
+    function rollCd(id){
+      const c = WEAPON_CD[id] || { min: 1000, max: 1500 };
+      return Math.round(c.min + Math.random() * (c.max - c.min));
+    }
     function canFire(w){ return !!w && w.status === 'ready' && (w.ammo === Infinity || w.ammo > 0); }
     function anyFiniteAmmo(){ return weapons.some(w => w.ammo !== Infinity && w.ammo > 0); }
     function startAuto(mode){
@@ -1069,7 +1081,7 @@ const __app = createApp({
       );
       beep(660,0.08,'square',0.04);
       autoTick();
-      autoTimer = setInterval(autoTick, 150);
+      autoTimer = setInterval(autoTick, AUTO_TICK);
     }
     function stopAuto(msg){
       if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
@@ -1093,13 +1105,15 @@ const __app = createApp({
           stopAuto(`${w ? w.cn : '武器'} 弹药不足，持续开火停止`);
           return;
         }
+        if(w.cd > 0){ w.cd = Math.max(0, w.cd - AUTO_TICK); return; }   // 冷却中
         w.charge = Math.min(100, w.charge + 7);
-        if(w.charge >= 100) fireWeapon();
+        if(w.charge >= 100){ fireWeapon(w); w.cd = rollCd(w.id); }
       }else{
         for(const w of weapons){
+          if(w.cd > 0){ w.cd = Math.max(0, w.cd - AUTO_TICK); continue; }  // 冷却中
           if(!canFire(w)) continue;
           w.charge = Math.min(100, w.charge + 7);
-          if(w.charge >= 100) fireWeapon(w);
+          if(w.charge >= 100){ fireWeapon(w); w.cd = rollCd(w.id); }
         }
         if(!anyFiniteAmmo()) stopAuto('智能作战完成：有限弹药全部耗尽');
       }
