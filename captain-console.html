@@ -284,7 +284,13 @@
   .w-charge i.full{background:var(--ok);box-shadow:0 0 6px rgba(143,191,122,.8)}
   .w-charge span{position:absolute;right:0;top:-13px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim)}
 
-  .fire-control{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none;margin-top:2px}
+  .fire-control{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;flex:none;margin-top:2px}
+  .fire-btn.smart{grid-column:1/-1;border-color:rgba(111,195,201,.4);color:var(--acc)}
+  .fire-btn.smart:hover{background:rgba(111,195,201,.12);color:#e6f6f7}
+  .fire-btn.smart.on{background:rgba(111,195,201,.18);border-color:var(--acc);color:#e6f6f7;box-shadow:inset 0 0 12px rgba(111,195,201,.15)}
+  .fire-btn.auto{border-color:rgba(217,164,65,.45);color:#d8b26a}
+  .fire-btn.auto:hover{background:rgba(217,164,65,.12);color:#e8c97e}
+  .fire-btn.auto.on{background:rgba(217,164,65,.2);border-color:var(--warn);color:#e8c97e;box-shadow:inset 0 0 12px rgba(217,164,65,.15)}
   .fire-btn{
     padding:9px 6px;text-align:center;cursor:pointer;font-size:12px;letter-spacing:.2em;
     background:rgba(148,168,190,.05);border:1px solid var(--line);color:var(--dim2);
@@ -579,10 +585,16 @@
         </div>
 
         <div class="fire-control">
-          <button class="fire-btn charge" :class="{on:charging}" @click="toggleCharge">
+          <button class="fire-btn charge" :class="{on:charging}" :disabled="autoMode!=='none'" @click="toggleCharge">
             {{ charging?'充能中…':'充能' }}<em>CHARGE</em>
           </button>
-          <button class="fire-btn shoot" @click="fireWeapon">开火<em>FIRE</em></button>
+          <button class="fire-btn shoot" :disabled="autoMode!=='none'" @click="fireWeapon()">开火<em>FIRE</em></button>
+          <button class="fire-btn auto" :class="{on:autoMode==='single'}" @click="toggleAuto('single')">
+            {{ autoMode==='single' ? '停止持续开火' : '持续开火' }}<em>HOLD FIRE</em>
+          </button>
+          <button class="fire-btn smart" :class="{on:autoMode==='all'}" @click="toggleAuto('all')">
+            {{ autoMode==='all' ? '停止智能作战' : '智能作战' }}<em>SMART COMBAT</em>
+          </button>
         </div>
 
       </div>
@@ -995,8 +1007,8 @@ const __app = createApp({
         if(ww.charge >= 100) stopCharge(`${ww.cn} 充能完毕，随时可开火`);
       }, 90);
     }
-    function fireWeapon(){
-      const w = selW.value;
+    function fireWeapon(w){
+      if(!w) w = selW.value;
       if(!w || w.status !== 'ready') return;
       if(!locked.value){
         pushLog('未锁定目标，无法开火','warn','火控');
@@ -1036,6 +1048,61 @@ const __app = createApp({
           beep(880,0.12,'sine',0.05);
         }
       }, 80);
+    }
+
+    /* ================= 自动火控（持续开火 / 智能作战） ================= */
+    const autoMode = ref('none');
+    let autoTimer = null;
+    function canFire(w){ return !!w && w.status === 'ready' && (w.ammo === Infinity || w.ammo > 0); }
+    function anyFiniteAmmo(){ return weapons.some(w => w.ammo !== Infinity && w.ammo > 0); }
+    function startAuto(mode){
+      if(!locked.value){
+        pushLog('未锁定目标，无法自动开火','warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(charging.value) stopCharge();
+      autoMode.value = mode;
+      pushLog(
+        mode === 'single' ? `自动火控启动：「${selW.value.cn}」持续开火` : '智能作战启动：全武器自动接战',
+        'ok','火控'
+      );
+      beep(660,0.08,'square',0.04);
+      autoTick();
+      autoTimer = setInterval(autoTick, 150);
+    }
+    function stopAuto(msg){
+      if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
+      if(autoMode.value !== 'none'){
+        autoMode.value = 'none';
+        pushLog(msg || '自动火控已停止','info','火控');
+        beep(420,0.07,'square',0.035);
+      }
+    }
+    function toggleAuto(mode){
+      if(autoMode.value === mode){ stopAuto(); return; }
+      if(autoMode.value !== 'none') stopAuto();
+      startAuto(mode);
+    }
+    function autoTick(){
+      if(autoMode.value === 'none') return;
+      if(!locked.value){ stopAuto('目标锁定解除，自动火控停止'); return; }
+      if(autoMode.value === 'single'){
+        const w = selW.value;
+        if(!canFire(w)){
+          stopAuto(`${w ? w.cn : '武器'} 弹药不足，持续开火停止`);
+          return;
+        }
+        w.charge = Math.min(100, w.charge + 7);
+        if(w.charge >= 100) fireWeapon();
+      }else{
+        for(const w of weapons){
+          if(!canFire(w)) continue;
+          w.charge = Math.min(100, w.charge + 7);
+          if(w.charge >= 100) fireWeapon(w);
+        }
+        if(!anyFiniteAmmo()) stopAuto('智能作战完成：有限弹药全部耗尽');
+      }
     }
 
     /* ================= 命令系统 ================= */
@@ -1188,6 +1255,7 @@ const __app = createApp({
     onUnmounted(()=>{
       cancelAnimationFrame(raf); cancelAnimationFrame(raf2);
       if(canvasRO) canvasRO.disconnect();
+      clearInterval(autoTimer);
       clearInterval(bootTimer);  clearInterval(chargeTimer); clearInterval(lockTimer);
       clearInterval(tickTimer);  clearInterval(evtTimer); clearInterval(clockTimer);
       clearInterval(aiTimer);    clearTimeout(aiWait);
@@ -1204,6 +1272,7 @@ const __app = createApp({
       waypoints, setWp, starCanvas, radarCanvas,
       weapons, selW, selectWeapon, charging, toggleCharge, fireWeapon,
       lockP, locked, toggleLock,
+      autoMode, toggleAuto,
       orders, cmdButtons, toggleOrder, alarm,
       aiText, tickerText, reactorLoad, shieldPct,
     };
