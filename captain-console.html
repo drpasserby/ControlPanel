@@ -59,10 +59,14 @@
   .shell.mode-alert{--acc:#d9a441}
   .shell.mode-combat{--acc:#e0564f}
   .main{
+    position:relative;min-height:0;overflow:hidden;
+  }
+  .viewgrid{
+    position:absolute;inset:0;
     display:grid;
     grid-template-columns:minmax(300px,360px) minmax(340px,1fr) minmax(320px,380px);
     grid-template-rows:minmax(0,1fr);
-    gap:8px;min-height:0;overflow:hidden;
+    gap:8px;
   }
 
   /* ---------- 面板通用 ---------- */
@@ -102,11 +106,24 @@
 
   /* ---------- 顶栏 ---------- */
   .topbar{
-    display:grid;grid-template-columns:auto 1fr;align-items:center;gap:16px;
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;
     padding:0 12px;
     border:1px solid var(--line);border-bottom-color:var(--line2);
     background:linear-gradient(180deg, rgba(148,168,190,.04), transparent);
   }
+  .top-center{display:flex;justify-content:center}
+  .view-switch{display:flex;border:1px solid var(--line)}
+  .view-switch button{
+    background:transparent;border:0;color:var(--dim2);
+    font-family:'Noto Sans SC',sans-serif;font-size:12px;letter-spacing:.16em;
+    padding:4px 14px;cursor:pointer;transition:all .2s;
+    border-right:1px solid var(--line2);
+  }
+  .view-switch button:last-child{border-right:0}
+  .view-switch button em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;letter-spacing:.18em;color:var(--dim);margin-top:2px}
+  .view-switch button:hover{color:var(--text);background:rgba(148,168,190,.06)}
+  .view-switch button.on{color:#04060a;background:var(--acc);font-weight:500}
+  .view-switch button.on em{color:rgba(4,6,10,.75)}
   .mode-combat .topbar{border-color:rgba(224,86,79,.35)}
   .brand{display:flex;align-items:center;gap:10px}
   .brand-mark{
@@ -327,6 +344,44 @@
   .fire-btn.shoot:hover{background:rgba(224,86,79,.16);color:#ffd9d6}
   .fire-btn:disabled{opacity:.35;cursor:not-allowed}
 
+  /* ---------- 船员视图 ---------- */
+  .crew-list{display:flex;flex-direction:column;gap:1px;background:var(--line2);border:1px solid var(--line2);flex:none}
+  .crew-row{display:flex;align-items:center;gap:10px;background:var(--panel);padding:8px 10px;cursor:pointer;border-left:2px solid transparent;transition:background .15s}
+  .crew-row:hover{background:rgba(148,168,190,.05)}
+  .crew-row.sel{border-left-color:var(--acc);background:rgba(111,195,201,.07)}
+  .cr-name{font-size:12px;letter-spacing:.1em;min-width:52px}
+  .cr-role{flex:1;font-size:10px;color:var(--dim2);letter-spacing:.08em}
+  .cr-st{font-size:9px;padding:1px 6px;border:1px solid var(--line2);color:var(--dim2);letter-spacing:.12em}
+  .cr-st.st-ok{color:var(--ok);border-color:rgba(143,191,122,.4)}
+  .cr-st.st-warn{color:var(--warn);border-color:rgba(217,164,65,.4)}
+  .cr-st.st-dim{color:var(--dim)}
+
+  .crew-card{border:1px solid var(--line2);padding:10px 12px;flex:none}
+  .cc-name{font-size:15px;letter-spacing:.18em;color:#e6ecf1}
+  .cc-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:9px;color:var(--dim);margin-left:8px;letter-spacing:.2em}
+  .cc-sub{font-size:10px;color:var(--dim2);letter-spacing:.14em;margin-top:4px}
+
+  .stat-bars{display:flex;flex-direction:column;gap:8px;flex:none}
+  .stat label{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);letter-spacing:.16em;margin-bottom:3px}
+  .stat label b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
+  .stat .bar{height:5px;background:rgba(255,255,255,.07)}
+  .stat .bar i{display:block;height:100%;background:var(--acc);transition:width .3s}
+  .stat .bar i.ok{background:var(--ok)}
+  .stat .bar i.warn{background:var(--warn)}
+  .stat .bar i.crit{background:var(--crit)}
+
+  .shift-box{flex:none;border-top:1px solid var(--line2)}
+  .shift-row{display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line2);font-size:10px}
+  .sr-name{color:#e6ecf1;letter-spacing:.14em;min-width:44px}
+  .sr-time{font-family:'Share Tech Mono',monospace;color:var(--dim);flex:1;letter-spacing:.1em}
+  .shift-row b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--acc)}
+
+  .station-list{display:flex;flex-direction:column;gap:1px;background:var(--line2);border:1px solid var(--line2);flex:none}
+  .station{display:flex;align-items:center;gap:10px;background:var(--panel);padding:8px 10px;cursor:pointer;transition:background .15s}
+  .station:hover{background:rgba(111,195,201,.08)}
+  .st-name{font-size:12px;letter-spacing:.14em;min-width:52px}
+  .st-crew{flex:1;font-size:10px;color:var(--dim2);text-align:right;letter-spacing:.06em}
+
   /* ---------- 底栏 ---------- */
   .bottombar{
     display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;
@@ -334,8 +389,7 @@
     background:linear-gradient(180deg, rgba(148,168,190,.03), transparent);
     font-size:9px;color:var(--dim);letter-spacing:.14em;
   }
-  .keys b{color:var(--dim2);font-weight:400;border:1px solid var(--line2);padding:0 4px;font-family:'Share Tech Mono',monospace}
-  .keys b+span{margin-left:4px}
+  .keys{font-size:9px;color:var(--dim);letter-spacing:.14em;white-space:nowrap}
   .ticker{overflow:hidden;white-space:nowrap}
   .ticker span{display:flex;animation:marq 28s linear infinite}
   .ticker i{font-style:normal;white-space:nowrap;margin-right:56px}
@@ -402,12 +456,13 @@
   /* ---------- 窄屏降级：三栏纵向堆叠（命令板块排最后，避免日志撑高影响航行） ---------- */
   @media (max-width: 1000px){
     .shell{grid-template-rows:auto 1fr auto}
-    .main{grid-template-columns:1fr;overflow-y:auto;padding-bottom:8px}
+    .viewgrid{grid-template-columns:1fr;overflow-y:auto;padding-bottom:8px}
     .panel{min-height:460px}
     .wpn{order:2}
     .cmd{order:3}
     .log-feed{max-height:200px}
     .topbar{grid-template-columns:1fr;gap:6px;padding:8px 12px}
+    .top-center{justify-content:flex-start}
     .top-right{justify-content:space-between}
   }
 </style>
@@ -452,6 +507,13 @@
         <div class="brand-sub">CNS-07 · 深空战术母舰 · DEEP SPACE VESSEL</div>
       </div>
     </div>
+    <div class="top-center">
+      <div class="view-switch">
+        <button v-for="v in viewButtons" :key="v.key" :class="{on:view===v.key}" @click="setView(v.key)">
+          {{ v.cn }}<em>{{ v.en }}</em>
+        </button>
+      </div>
+    </div>
     <div class="top-right">
       <div class="led" v-for="s in sysLeds" :key="s.key" :class="{bad:!s.on}">
         <i class="dot" :class="{blink:s.on}"></i>{{s.label}}<b>{{s.on?'在线':'离线'}}</b>
@@ -467,6 +529,9 @@
 
   <!-- 主体 -->
   <main class="main">
+
+    <!-- ============ 视图：作战 ============ -->
+    <div class="viewgrid" v-show="view==='combat'">
 
     <!-- ============ 01 航行 ============ -->
     <section class="panel nav" :class="{focused:focus==='nav'}" @click="focus='nav'">
@@ -636,13 +701,175 @@
 
       </div>
     </section>
+    </div>
+
+    <!-- ============ 视图：维生 ============ -->
+    <div class="viewgrid" v-show="view==='life'">
+
+      <!-- L1 生命维持总控 -->
+      <section class="panel" :class="{focused:focus==='life1'}" @click="focus='life1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">L1</span>
+          <h2>维生总控<em>LIFE CORE</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:life.o2&lt;70}">{{ life.o2&lt;70 ? '低氧警报' : '运行中' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell" :class="{warn:life.o2&lt;70}"><div class="tele-label">氧气 / O₂</div><div class="tele-value">{{ life.o2.toFixed(1) }}<small>%</small></div></div>
+            <div class="tele-cell" :class="{warn:life.co2&gt;0.08}"><div class="tele-label">二氧化碳 / CO₂</div><div class="tele-value">{{ life.co2.toFixed(3) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">舱压 / PRESSURE</div><div class="tele-value">{{ life.pressure.toFixed(1) }}<small>kPa</small></div></div>
+            <div class="tele-cell"><div class="tele-label">温度 / TEMP</div><div class="tele-value">{{ life.temp.toFixed(1) }}<small>°C</small></div></div>
+            <div class="tele-cell"><div class="tele-label">湿度 / HUMIDITY</div><div class="tele-value">{{ life.humidity.toFixed(0) }}<small>%</small></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" v-for="s in lifeSysButtons" :key="s.key" :class="{on:lifeSystems[s.key]}" @click="toggleLifeSystem(s.key)">
+              {{ s.cn }}<em>{{ s.en }}</em>
+            </button>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">维生</span>
+            <span class="ai-text">{{ lifeTip }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- L2 环境分区 -->
+      <section class="panel" :class="{focused:focus==='life2'}" @click="focus='life2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">L2</span>
+          <h2>环境分区<em>ZONES</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:selZoneObj.status==='偏热'}">{{ selZoneObj.status }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="wplist">
+            <div class="wp" v-for="(z,i) in zones" :key="z.name" :class="{active:selZone===i}" @click="setZone(i)">
+              <span class="wp-name">{{ z.name }}</span>
+              <span class="wp-meta">{{ z.temp.toFixed(1) }}°C · O₂ {{ z.o2.toFixed(1) }}% · {{ z.status }}</span>
+            </div>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">分区</span>
+            <span class="ai-text">已选中「{{ selZoneObj.name }}」：温度 {{ selZoneObj.temp.toFixed(1) }}°C · 氧气 {{ selZoneObj.o2.toFixed(1) }}%</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- L3 应急协议 -->
+      <section class="panel" :class="{focused:focus==='life3'}" @click="focus='life3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">L3</span>
+          <h2>应急协议<em>EMERGENCY</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:lifeEms.lockdown||lifeEms.airlock||lifeEms.radshield}">就绪</span>
+        </header>
+        <div class="cmd-body">
+          <div class="orders">
+            <button class="cmd-btn" v-for="e in lifeEmsButtons" :key="e.key" :class="{on:lifeEms[e.key]}" @click="toggleLifeEms(e.key)">
+              {{ e.cn }}<em>{{ e.en }}</em>
+            </button>
+          </div>
+          <div class="log-box">
+            <div class="log-title">维生日志 · LIFE LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in lifeLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：船员 ============ -->
+    <div class="viewgrid" v-show="view==='crew'">
+
+      <!-- C1 船员名册 -->
+      <section class="panel" :class="{focused:focus==='crew1'}" @click="focus='crew1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">C1</span>
+          <h2>船员名册<em>CREW ROSTER</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state on">{{ crew.length }} 人</span>
+        </header>
+        <div class="cmd-body">
+          <div class="crew-list">
+            <div class="crew-row" v-for="c in crew" :key="c.id" :class="{sel:selCrew===c.id}" @click="selectCrew(c.id)">
+              <span class="cr-name">{{ c.name }}</span>
+              <span class="cr-role">{{ c.role }}</span>
+              <span class="cr-st" :class="'st-'+stCls(c.status)">{{ c.status }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- C2 船员状态 -->
+      <section class="panel" :class="{focused:focus==='crew2'}" @click="focus='crew2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">C2</span>
+          <h2>船员状态<em>STATUS</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="stCls(selCrewObj.status)==='ok'?'on':''">{{ selCrewObj.name }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="crew-card">
+            <div class="cc-name">{{ selCrewObj.name }}<em>{{ selCrewObj.role }}</em></div>
+            <div class="cc-sub">{{ selCrewObj.status }} · {{ selCrewObj.shift }} · 岗位：{{ selCrewObj.station }}</div>
+          </div>
+          <div class="stat-bars">
+            <div class="stat"><label>健康 <b>{{ selCrewObj.health }}</b></label><div class="bar"><i :class="barCls(selCrewObj.health)" :style="{width:selCrewObj.health+'%'}"></i></div></div>
+            <div class="stat"><label>体力 <b>{{ selCrewObj.stamina }}</b></label><div class="bar"><i :class="barCls(selCrewObj.stamina)" :style="{width:selCrewObj.stamina+'%'}"></i></div></div>
+            <div class="stat"><label>士气 <b>{{ selCrewObj.morale }}</b></label><div class="bar"><i :class="barCls(selCrewObj.morale)" :style="{width:selCrewObj.morale+'%'}"></i></div></div>
+          </div>
+          <div class="shift-box">
+            <div class="log-title">轮班表 · SHIFT ROSTER</div>
+            <div class="shift-row" v-for="sh in shiftInfo" :key="sh.name">
+              <span class="sr-name">{{ sh.name }}</span>
+              <span class="sr-time">{{ sh.time }}</span>
+              <b>{{ sh.count }} 人</b>
+            </div>
+            <button class="adv-btn" @click="rotateShifts">轮换轮班 · ROTATE SHIFTS</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- C3 岗位分配 -->
+      <section class="panel" :class="{focused:focus==='crew3'}" @click="focus='crew3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">C3</span>
+          <h2>岗位分配<em>POST ASSIGNMENT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">点选岗位调任</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-title">点击岗位，将当前选中船员调任（舰长须留守舰桥）</div>
+          <div class="station-list">
+            <div class="station" v-for="st in stations" :key="st" @click="assignStation(st)">
+              <span class="st-name">{{ st }}</span>
+              <span class="st-crew">{{ crewAt(st) }}</span>
+            </div>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">选中</span>
+            <span class="ai-text">{{ selCrewObj.name }} · {{ selCrewObj.role }} · 当前岗位 {{ selCrewObj.station }}</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
   </main>
 
   <!-- 底栏 -->
   <footer class="bottombar">
-    <div class="keys">
-      <b>1</b><span>航行</span><b>2</b><span>命令</span><b>3</b><span>武器</span><b>空格</b><span>开火</span>
-    </div>
+    <div class="keys">{{ keysHint }}</div>
     <div class="ticker">
       <span><i>{{ tickerText }}</i><i>{{ tickerText }}</i></span>
     </div>
@@ -1312,6 +1539,111 @@ const __app = createApp({
       {key:'nav',     label:'导航',   on:true},
     ]);
 
+    /* ================= 视图切换（舰桥多视图） ================= */
+    const view = ref('combat');
+    const viewButtons = [
+      {key:'combat', cn:'作战', en:'COMBAT'},
+      {key:'life',   cn:'维生', en:'LIFE'},
+      {key:'crew',   cn:'船员', en:'CREW'},
+    ];
+    function setView(k){
+      if(view.value === k) return;
+      view.value = k;
+      focus.value = '';
+      const vn = viewButtons.find(v => v.key === k).cn;
+      pushLog(`切换至「${vn}」控制台`,'info','系统');
+      beep(520,0.05,'square',0.03);
+    }
+    const keysHint = computed(()=> view.value === 'combat' ? '1 航行  2 命令  3 武器  空格 开火'
+      : view.value === 'life' ? '1 维生总控  2 环境分区  3 应急协议'
+      : '1 船员名册  2 船员状态  3 岗位分配');
+
+    /* ================= 维生系统 ================= */
+    const life = reactive({ o2:78.5, co2:0.04, pressure:101.3, temp:21.5, humidity:42 });
+    const lifeSystems = reactive({ oxy:true, scrubber:true, thermo:true, hydro:false });
+    const lifeSysButtons = [
+      {key:'oxy',      cn:'制氧循环', en:'O₂ SCRUB'},
+      {key:'scrubber', cn:'CO₂ 净化', en:'CO₂ FILTER'},
+      {key:'thermo',   cn:'温度调控', en:'THERMO'},
+      {key:'hydro',    cn:'水培循环', en:'HYDRO'},
+    ];
+    const zones = reactive([
+      {name:'舰桥',   temp:21.2, o2:78.4, status:'正常'},
+      {name:'居住区', temp:22.1, o2:77.9, status:'正常'},
+      {name:'货舱',   temp:18.6, o2:76.2, status:'正常'},
+      {name:'引擎舱', temp:34.8, o2:72.5, status:'偏热'},
+    ]);
+    const selZone = ref(0);
+    const selZoneObj = computed(()=> zones[selZone.value] || zones[0]);
+    const lifeEms = reactive({ lockdown:false, airlock:false, radshield:false });
+    const lifeEmsButtons = [
+      {key:'lockdown', cn:'减压封锁', en:'LOCKDOWN'},
+      {key:'airlock',  cn:'气闸隔离', en:'AIRLOCK'},
+      {key:'radshield',cn:'辐射屏蔽', en:'RAD SHIELD'},
+    ];
+    const lifeTip = computed(()=>{
+      if(life.o2 < 70) return '氧气浓度偏低，建议启动制氧循环！';
+      if(life.co2 > 0.08) return 'CO₂ 浓度偏高，净化系统负载增大。';
+      if(selZoneObj.status === '偏热') return `「${selZoneObj.name}」温度异常，建议检查温控。`;
+      return '生命维持系统运行稳定，所有指标正常。';
+    });
+    const lifeLogs = computed(()=> log.value.filter(i => i.src === '维生'));
+    function toggleLifeSystem(key){
+      lifeSystems[key] = !lifeSystems[key];
+      const MSG = { oxy:'制氧循环', scrubber:'CO₂ 净化', thermo:'温度调控', hydro:'水培循环' };
+      pushLog(`${MSG[key]} ${lifeSystems[key] ? '启动' : '关闭'}`, lifeSystems[key] ? 'ok' : 'info', '维生');
+      beep(lifeSystems[key] ? 520 : 380, 0.06, 'square', 0.03);
+    }
+    function setZone(i){ selZone.value = i; beep(520,0.04,'square',0.02); }
+    function toggleLifeEms(key){
+      lifeEms[key] = !lifeEms[key];
+      const MSG = { lockdown:'紧急减压封锁', airlock:'气闸隔离', radshield:'辐射屏蔽阵列' };
+      pushLog(`${MSG[key]}已${lifeEms[key] ? '启动' : '解除'}`, lifeEms[key] ? 'ok' : 'info', '维生');
+      beep(lifeEms[key] ? 660 : 420, 0.07, 'square', 0.035);
+    }
+
+    /* ================= 船员管理 ================= */
+    const crew = reactive([
+      {id:1, name:'林晚星', role:'舰长',       status:'在岗', shift:'一班', station:'舰桥', health:92, stamina:78, morale:85},
+      {id:2, name:'陈启明', role:'导航员',     status:'在岗', shift:'一班', station:'舰桥', health:88, stamina:70, morale:80},
+      {id:3, name:'苏璃',   role:'武器官',     status:'在岗', shift:'二班', station:'武器', health:95, stamina:82, morale:88},
+      {id:4, name:'赵铁柱', role:'轮机长',     status:'在岗', shift:'二班', station:'动力', health:90, stamina:90, morale:72},
+      {id:5, name:'白鹭',   role:'医疗官',     status:'轮休', shift:'三班', station:'医疗', health:97, stamina:75, morale:90},
+      {id:6, name:'沈括',   role:'维生工程师', status:'休眠', shift:'三班', station:'维生', health:85, stamina:95, morale:76},
+    ]);
+    const selCrew = ref(1);
+    const selCrewObj = computed(()=> crew.find(c => c.id === selCrew.value) || crew[0]);
+    const stations = ['舰桥','动力','武器','医疗','维生'];
+    const SHIFTS = [
+      {name:'一班', time:'00:00-08:00'},
+      {name:'二班', time:'08:00-16:00'},
+      {name:'三班', time:'16:00-24:00'},
+    ];
+    const shiftInfo = computed(()=> SHIFTS.map(s => ({
+      name: s.name, time: s.time, count: crew.filter(c => c.shift === s.name).length
+    })));
+    function stCls(st){ return st === '在岗' ? 'ok' : st === '轮休' ? 'warn' : 'dim'; }
+    function barCls(v){ return v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'crit'; }
+    function selectCrew(id){ selCrew.value = id; beep(520,0.04,'square',0.02); }
+    function crewAt(st){
+      const list = crew.filter(c => c.station === st);
+      return list.length ? list.map(c => c.name).join('、') : '—';
+    }
+    function assignStation(st){
+      const c = selCrewObj.value;
+      if(c.id === 1){ pushLog('舰长必须留守舰桥','warn','系统'); beep(140,0.2,'square',0.04); return; }
+      if(c.station === st){ pushLog(`${c.name} 已在「${st}」岗位`,'info','系统'); return; }
+      c.station = st;
+      pushLog(`${c.name} 调任 → 「${st}」岗位`,'cmd','舰长');
+      beep(640,0.06,'square',0.03);
+    }
+    function rotateShifts(){
+      const order = ['一班','二班','三班'];
+      crew.forEach(c => { c.shift = order[(order.indexOf(c.shift) + 1) % 3]; });
+      pushLog('轮班表已轮换：一班→二班 · 二班→三班 · 三班→一班','cmd','舰长');
+      beep(640,0.06,'sine',0.04);
+    }
+
     /* ================= AI 副官 ================= */
     const aiPool = [
       '检测到前方小行星带密度上升 12%，建议降低巡航速度。',
@@ -1374,16 +1706,34 @@ const __app = createApp({
         shieldPct.value = Math.max(0, shieldPct.value - 0.08);
         if(shieldPct.value <= 0 && !shieldBroken.value){ shieldBroken.value = true; pushLog('护盾能量耗尽！','crit','系统'); }
       }
+      /* 维生数据漂移 */
+      if(lifeSystems.oxy)      life.o2 = Math.min(100, life.o2 + 0.012);
+      else                     life.o2 = Math.max(0,  life.o2 - 0.03);
+      if(lifeSystems.scrubber) life.co2 = Math.max(0.02, life.co2 - 0.0006);
+      else                     life.co2 = Math.min(0.2,  life.co2 + 0.001);
+      life.temp += lifeSystems.thermo ? (21.5 - life.temp) * 0.02 : (Math.random() - 0.5) * 0.2;
+      life.pressure += (101.3 - life.pressure) * 0.01;
+      life.humidity += lifeSystems.hydro ? (45 - life.humidity) * 0.02 : (Math.random() - 0.5) * 0.5;
+      zones.forEach(z => { z.temp += (Math.random() - 0.5) * 0.1; z.o2 = Math.min(100, Math.max(0, life.o2 + (Math.random() - 0.5) * 1.2)); });
+      /* 船员数值微漂移 */
+      crew.forEach(c => {
+        c.stamina = Math.max(10, Math.min(100, c.stamina + (Math.random() - 0.5) * 1.2));
+        c.morale  = Math.max(10, Math.min(100, c.morale  + (Math.random() - 0.5) * 0.8));
+        if(Math.random() < 0.1) c.health = Math.max(30, Math.min(100, c.health + (Math.random() - 0.5) * 1));
+      });
       ti = (ti+1) % tickPool.length; tickerText.value = tickPool[ti];
     }
 
     /* ================= 键盘快捷键 ================= */
     function onKey(e){
       if(!bootDone.value) return;
-      if(e.key === '1')      focus.value = 'nav';
-      else if(e.key === '2') focus.value = 'cmd';
-      else if(e.key === '3') focus.value = 'wpn';
-      else if(e.key === ' '){ e.preventDefault(); fireWeapon(); }
+      const f1 = view.value === 'combat' ? 'nav'   : view.value === 'life' ? 'life1' : 'crew1';
+      const f2 = view.value === 'combat' ? 'cmd'   : view.value === 'life' ? 'life2' : 'crew2';
+      const f3 = view.value === 'combat' ? 'wpn'   : view.value === 'life' ? 'life3' : 'crew3';
+      if(e.key === '1')      focus.value = f1;
+      else if(e.key === '2') focus.value = f2;
+      else if(e.key === '3') focus.value = f3;
+      else if(e.key === ' '){ e.preventDefault(); if(view.value === 'combat') fireWeapon(); }
     }
 
     /* ================= 挂载 / 卸载 ================= */
@@ -1443,6 +1793,12 @@ const __app = createApp({
       autoMode, toggleAuto,
       orders, cmdButtons, toggleOrder, alarm,
       engineIgnite, flameOpacity,
+      view, viewButtons, setView, keysHint,
+      life, lifeSystems, lifeSysButtons, toggleLifeSystem,
+      zones, selZone, selZoneObj, setZone,
+      lifeEms, lifeEmsButtons, toggleLifeEms, lifeTip, lifeLogs,
+      crew, selCrew, selCrewObj, selectCrew, stations, crewAt, assignStation,
+      shiftInfo, rotateShifts, stCls, barCls,
       warpReady, warping, btnCls, btnLabel, btnEn, btnClick,
       aiText, tickerText, reactorLoad, shieldPct,
     };
