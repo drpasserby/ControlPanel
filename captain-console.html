@@ -786,80 +786,521 @@
 
     </div>
 
-    <!-- ============ 视图：船员 ============ -->
-    <div class="viewgrid" v-show="view==='crew'">
+    <!-- ============ 视图：岗位 ============ -->
+    <div class="viewgrid" v-show="view==='staff'">
 
-      <!-- C1 船员名册 -->
-      <section class="panel" :class="{focused:focus==='crew1'}" @click="focus='crew1'">
+      <!-- S1 岗位席位 -->
+      <section class="panel" :class="{focused:focus==='staff1'}" @click="focus='staff1'">
         <i class="corners"><i></i><i></i><i></i><i></i></i>
         <header class="ph">
-          <span class="ph-idx">C1</span>
-          <h2>船员名册<em>CREW ROSTER</em></h2>
+          <span class="ph-idx">S1</span>
+          <h2>岗位席位<em>STAFFING</em></h2>
           <span class="ph-line"></span>
-          <span class="ph-state on">{{ crew.length }} 人</span>
+          <span class="ph-state" :class="{on:lowStaff.length>0}">{{ lowStaff.length>0 ? lowStaff.length+' 处缺员' : '满编' }}</span>
         </header>
         <div class="cmd-body">
-          <div class="crew-list">
-            <div class="crew-row" v-for="c in crew" :key="c.id" :class="{sel:selCrew===c.id}" @click="selectCrew(c.id)">
-              <span class="cr-name">{{ c.name }}</span>
-              <span class="cr-role">{{ c.role }}</span>
-              <span class="cr-st" :class="'st-'+stCls(c.status)">{{ c.status }}</span>
-            </div>
+          <div class="srow" v-for="(r,i) in staffRows" :key="r.name" :class="{sel:selStaff===i}" @click="selectStaff(i)">
+            <span class="sn">{{ r.name }}</span>
+            <span class="sm">{{ r.count }}/{{ r.max }} · {{ r.state }}</span>
+            <span class="sb"><i :class="barCls(r.pct)" :style="{width:r.pct+'%'}"></i></span>
+            <span class="sv">{{ r.pct }}%</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">待命池</span>
+            <span class="ai-text">{{ standbyCount }} 人可用 · 疲劳指数 {{ fatigue.toFixed(0) }}%</span>
           </div>
         </div>
       </section>
 
-      <!-- C2 船员状态 -->
-      <section class="panel" :class="{focused:focus==='crew2'}" @click="focus='crew2'">
+      <!-- S2 轮班覆盖 -->
+      <section class="panel" :class="{focused:focus==='staff2'}" @click="focus='staff2'">
         <i class="corners"><i></i><i></i><i></i><i></i></i>
         <header class="ph">
-          <span class="ph-idx">C2</span>
-          <h2>船员状态<em>STATUS</em></h2>
+          <span class="ph-idx">S2</span>
+          <h2>轮班覆盖<em>SHIFT COVERAGE</em></h2>
           <span class="ph-line"></span>
-          <span class="ph-state" :class="stCls(selCrewObj.status)==='ok'?'on':''">{{ selCrewObj.name }}</span>
+          <span class="ph-state" :class="{on:fatigue>70}">疲劳 {{ fatigue.toFixed(0) }}%</span>
         </header>
         <div class="cmd-body">
-          <div class="crew-card">
-            <div class="cc-name">{{ selCrewObj.name }}<em>{{ selCrewObj.role }}</em></div>
-            <div class="cc-sub">{{ selCrewObj.status }} · {{ selCrewObj.shift }} · 岗位：{{ selCrewObj.station }}</div>
-          </div>
-          <div class="stat-bars">
-            <div class="stat"><label>健康 <b>{{ selCrewObj.health }}</b></label><div class="bar"><i :class="barCls(selCrewObj.health)" :style="{width:selCrewObj.health+'%'}"></i></div></div>
-            <div class="stat"><label>体力 <b>{{ selCrewObj.stamina }}</b></label><div class="bar"><i :class="barCls(selCrewObj.stamina)" :style="{width:selCrewObj.stamina+'%'}"></i></div></div>
-            <div class="stat"><label>士气 <b>{{ selCrewObj.morale }}</b></label><div class="bar"><i :class="barCls(selCrewObj.morale)" :style="{width:selCrewObj.morale+'%'}"></i></div></div>
-          </div>
           <div class="shift-box">
-            <div class="log-title">轮班表 · SHIFT ROSTER</div>
+            <div class="log-title">三班覆盖 · SHIFTS</div>
             <div class="shift-row" v-for="sh in shiftInfo" :key="sh.name">
               <span class="sr-name">{{ sh.name }}</span>
               <span class="sr-time">{{ sh.time }}</span>
-              <b>{{ sh.count }} 人</b>
+              <b>{{ sh.count }} 人 · 覆盖 {{ sh.coverage }}%</b>
             </div>
             <button class="adv-btn" @click="rotateShifts">轮换轮班 · ROTATE SHIFTS</button>
+          </div>
+          <div class="stat-bars">
+            <div class="stat"><label>疲劳指数 <b>{{ fatigue.toFixed(0) }}</b></label><div class="bar"><i :class="barCls(100-fatigue.value)" :style="{width:fatigue.value+'%'}"></i></div></div>
           </div>
         </div>
       </section>
 
-      <!-- C3 岗位分配 -->
-      <section class="panel" :class="{focused:focus==='crew3'}" @click="focus='crew3'">
+      <!-- S3 人员调度 -->
+      <section class="panel" :class="{focused:focus==='staff3'}" @click="focus='staff3'">
         <i class="corners"><i></i><i></i><i></i><i></i></i>
         <header class="ph">
-          <span class="ph-idx">C3</span>
-          <h2>岗位分配<em>POST ASSIGNMENT</em></h2>
+          <span class="ph-idx">S3</span>
+          <h2>人员调度<em>DEPLOYMENT</em></h2>
           <span class="ph-line"></span>
-          <span class="ph-state">点选岗位调任</span>
+          <span class="ph-state">选中：{{ selStaffObj.name }}</span>
         </header>
         <div class="cmd-body">
-          <div class="log-title">点击岗位，将当前选中船员调任（舰长须留守舰桥）</div>
-          <div class="station-list">
-            <div class="station" v-for="st in stations" :key="st" @click="assignStation(st)">
-              <span class="st-name">{{ st }}</span>
-              <span class="st-crew">{{ crewAt(st) }}</span>
+          <div class="log-title">从待命池向选中岗位补员 · 空缺岗位优先</div>
+          <div class="orders">
+            <button class="cmd-btn" @click="deployCrew">补员部署<em>DEPLOY</em></button>
+            <button class="cmd-btn" @click="rotateShifts">轮换轮班<em>SHIFTS</em></button>
+          </div>
+          <div class="log-box">
+            <div class="log-title">调度记录 · STAFF LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in staffLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：动力 ============ -->
+    <div class="viewgrid" v-show="view==='power'">
+
+      <!-- P1 反应堆输出 -->
+      <section class="panel" :class="{focused:focus==='power1'}" @click="focus='power1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">P1</span>
+          <h2>反应堆输出<em>REACTOR OUTPUT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:power.reactor>90}">{{ power.reactor.toFixed(0) }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell"><div class="tele-label">反应堆输出</div><div class="tele-value">{{ power.reactor.toFixed(0) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">总分配</div><div class="tele-value">{{ powerTotal }}<small>pts</small></div></div>
+          </div>
+          <div class="pwr-list">
+            <div class="pwr-row" v-for="b in powerBranches" :key="b.key">
+              <span class="pr-name">{{ b.cn }}</span>
+              <input type="range" min="0" max="100" :value="power.branches[b.key]" @input="setBranch(b.key, $event.target.value)">
+              <span class="pr-val">{{ power.branches[b.key] }}%</span>
+            </div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" :class="{on:power.emergency}" @click="toggleEmergency">紧急动力<em>EMERGENCY POWER</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- P2 支路负载 -->
+      <section class="panel" :class="{focused:focus==='power2'}" @click="focus='power2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">P2</span>
+          <h2>支路负载<em>BRANCH LOAD</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:powerTotal>130}">{{ powerTotal>130 ? '过载' : '正常' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="b in powerBranches" :key="b.key">
+            <span class="sn">{{ b.cn }}</span>
+            <span class="sm">{{ loadState(b.key) }}</span>
+            <span class="sb"><i :class="barCls(100-Math.abs(50-power.branches[b.key]))" :style="{width:power.branches[b.key]+'%'}"></i></span>
+            <span class="sv">{{ power.branches[b.key] }}%</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">提示</span>
+            <span class="ai-text">{{ powerTotal > 130 ? '总分配过高，请削减非关键支路！' : '动力分配平衡，各系统运行正常。' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- P3 动力事件 -->
+      <section class="panel" :class="{focused:focus==='power3'}" @click="focus='power3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">P3</span>
+          <h2>动力事件<em>POWER LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:power.emergency}">紧急模式</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">动力日志 · POWER LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in powerLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：物资 ============ -->
+    <div class="viewgrid" v-show="view==='cargo'">
+
+      <!-- G1 库存总览 -->
+      <section class="panel" :class="{focused:focus==='cargo1'}" @click="focus='cargo1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G1</span>
+          <h2>库存总览<em>CARGO</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:lowCargo.length>0}">{{ lowCargo.length>0 ? lowCargo.length+' 项告急' : '正常' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="(c,i) in cargo" :key="c.name" :class="{sel:selCargo===i}" @click="selectCargo(i)">
+            <span class="sn">{{ c.name }}</span>
+            <span class="sm">{{ c.en }}</span>
+            <span class="sb"><i :class="barCls(c.amount)" :style="{width:c.amount+'%'}"></i></span>
+            <span class="sv">{{ c.amount.toFixed(1) }}%</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">低库存</span>
+            <span class="ai-text">{{ lowCargo.length ? lowCargo.map(c=>c.name).join('、')+' 已低于 30%！' : '无低库存预警' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- G2 详情与补给 -->
+      <section class="panel" :class="{focused:focus==='cargo2'}" @click="focus='cargo2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G2</span>
+          <h2>详情与补给<em>DETAIL</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:rationing}">配给中</span>
+        </header>
+        <div class="cmd-body">
+          <div class="crew-card">
+            <div class="cc-name">{{ selCargoObj.name }}<em>{{ selCargoObj.en }}</em></div>
+            <div class="cc-sub">消耗速率 {{ selCargoObj.rate.toFixed(3) }}/tick · 预计可维持 {{ cargoEta(selCargoObj) }} 天</div>
+          </div>
+          <div class="stat-bars">
+            <div class="stat"><label>库存 <b>{{ selCargoObj.amount.toFixed(1) }}%</b></label><div class="bar"><i :class="barCls(selCargoObj.amount)" :style="{width:selCargoObj.amount+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="requestSupply">补给请求<em>RESUPPLY</em></button>
+            <button class="cmd-btn" :class="{on:rationing}" @click="toggleRationing">紧急配给<em>RATIONING</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- G3 物资日志 -->
+      <section class="panel" :class="{focused:focus==='cargo3'}" @click="focus='cargo3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G3</span>
+          <h2>物资日志<em>CARGO LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">补给记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">物资日志 · CARGO LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in cargoLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：损管 ============ -->
+    <div class="viewgrid" v-show="view==='hull'">
+
+      <!-- H1 舰体剖面 -->
+      <section class="panel" :class="{focused:focus==='hull1'}" @click="focus='hull1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">H1</span>
+          <h2>舰体剖面<em>HULL MAP</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:hullOverall<80}">完整度 {{ hullOverall }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="hull-grid">
+            <div class="hull-cell" v-for="(h,i) in hull" :key="h.name" :class="{sel:selHull===i}" @click="selectHull(i)">
+              <div class="hc-name">{{ h.name }}</div>
+              <div class="hc-val" :class="barCls(h.integrity)">{{ h.integrity }}%</div>
             </div>
           </div>
           <div class="ai-line">
-            <span class="ai-tag">选中</span>
-            <span class="ai-text">{{ selCrewObj.name }} · {{ selCrewObj.role }} · 当前岗位 {{ selCrewObj.station }}</span>
+            <span class="ai-tag">整体</span>
+            <span class="ai-text">舰体完整度 {{ hullOverall }}% · 可用抢修小组 {{ repairTeams }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- H2 抢修详情 -->
+      <section class="panel" :class="{focused:focus==='hull2'}" @click="focus='hull2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">H2</span>
+          <h2>抢修详情<em>REPAIR</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">小组 ×{{ repairTeams }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="crew-card">
+            <div class="cc-name">{{ selHullObj.name }}</div>
+            <div class="cc-sub">结构完整度 {{ selHullObj.integrity }}% · 作战中可能随机受损</div>
+          </div>
+          <div class="stat-bars">
+            <div class="stat"><label>完整度 <b>{{ selHullObj.integrity }}%</b></label><div class="bar"><i :class="barCls(selHullObj.integrity)" :style="{width:selHullObj.integrity+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="deployRepair">部署抢修组<em>DEPLOY REPAIR</em></button>
+            <button class="cmd-btn" @click="recallRepair">召回抢修组<em>RECALL</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- H3 损管日志 -->
+      <section class="panel" :class="{focused:focus==='hull3'}" @click="focus='hull3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">H3</span>
+          <h2>损管日志<em>DAMAGE LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">抢修记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">损管日志 · DAMAGE LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in hullLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：医疗 ============ -->
+    <div class="viewgrid" v-show="view==='med'">
+
+      <!-- M1 全舰健康 -->
+      <section class="panel" :class="{focused:focus==='med1'}" @click="focus='med1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">M1</span>
+          <h2>全舰健康<em>HEALTH INDEX</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:med.index<70}">{{ med.index<70 ? '异常' : '良好' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell"><div class="tele-label">健康指数</div><div class="tele-value">{{ med.index }}<small>/100</small></div></div>
+            <div class="tele-cell"><div class="tele-label">在诊病患</div><div class="tele-value">{{ med.patients }}<small>人</small></div></div>
+            <div class="tele-cell"><div class="tele-label">医疗舱占用</div><div class="tele-value">{{ med.occupancy }}<small>%</small></div></div>
+            <div class="tele-cell warn"><div class="tele-label">辐射暴露</div><div class="tele-value">{{ med.exposure.toFixed(1) }}<small>mSv</small></div></div>
+            <div class="tele-cell"><div class="tele-label">心理状态</div><div class="tele-value">{{ med.psych }}<small>/100</small></div></div>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">医疗</span>
+            <span class="ai-text">{{ med.index<70 ? '全舰健康指数偏低，建议安排体检！' : '全舰健康状况良好。' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- M2 医疗资源 -->
+      <section class="panel" :class="{focused:focus==='med2'}" @click="focus='med2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">M2</span>
+          <h2>医疗资源<em>RESOURCES</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">{{ medRes.beds }} 舱位</span>
+        </header>
+        <div class="cmd-body">
+          <div class="stat-bars">
+            <div class="stat"><label>药品 <b>{{ medRes.drugs }}%</b></label><div class="bar"><i :class="barCls(medRes.drugs)" :style="{width:medRes.drugs+'%'}"></i></div></div>
+            <div class="stat"><label>疫苗 <b>{{ medRes.vaccine }}%</b></label><div class="bar"><i :class="barCls(medRes.vaccine)" :style="{width:medRes.vaccine+'%'}"></i></div></div>
+            <div class="stat"><label>医疗舱位 <b>{{ medRes.beds }} 张</b></label><div class="bar"><i :style="{width:(medRes.beds/6*100)+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" :class="{on:screening}" @click="runScreening">{{ screening?'体检进行中…':'例行体检' }}<em>SCREENING</em></button>
+            <button class="cmd-btn" @click="pandemicDrill">疫情演练<em>DRILL</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- M3 医疗记录 -->
+      <section class="panel" :class="{focused:focus==='med3'}" @click="focus='med3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">M3</span>
+          <h2>医疗记录<em>MED LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">诊疗记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">医疗日志 · MED LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in medLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：通信 ============ -->
+    <div class="viewgrid" v-show="view==='comms'">
+
+      <!-- K1 通信频道 -->
+      <section class="panel" :class="{focused:focus==='comms1'}" @click="focus='comms1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">K1</span>
+          <h2>通信频道<em>CHANNELS</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:selChanObj.sig<30}">信号 {{ selChanObj.sig.toFixed(0) }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="(c,i) in channels" :key="c.name" :class="{sel:selChan===i}" @click="selectChan(i)">
+            <span class="sn">{{ c.name }}</span>
+            <span class="sm">{{ c.freq }}</span>
+            <span class="sb"><i :class="barCls(c.sig)" :style="{width:c.sig+'%'}"></i></span>
+            <span class="sv">{{ c.sig.toFixed(0) }}</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">当前</span>
+            <span class="ai-text">{{ selChanObj.name }} · {{ selChanObj.freq }} · 信号强度 {{ selChanObj.sig.toFixed(0) }}%</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- K2 消息与破译 -->
+      <section class="panel" :class="{focused:focus==='comms2'}" @click="focus='comms2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">K2</span>
+          <h2>消息与破译<em>DECRYPT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:decipherPct>0&&decipherPct<100}">破译 {{ decipherPct }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-title">消息队列 · MESSAGE QUEUE</div>
+          <div class="msg-box">
+            <div class="msg" v-for="(m,i) in msgQueue" :key="i">◈ {{ m }}</div>
+          </div>
+          <div class="log-title">未知信号破译 · DECRYPTION</div>
+          <div class="scanbar"><i :style="{width:decipherPct+'%'}"></i></div>
+          <div class="orders">
+            <button class="cmd-btn" @click="sendBeacon">发送信标<em>BEACON</em></button>
+            <button class="cmd-btn" @click="decipher">破译数据包<em>DECRYPT</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- K3 情报日志 -->
+      <section class="panel" :class="{focused:focus==='comms3'}" @click="focus='comms3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">K3</span>
+          <h2>情报日志<em>COMMS LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">通信记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">通信日志 · COMMS LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in commsLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：科研 ============ -->
+    <div class="viewgrid" v-show="view==='sensor'">
+
+      <!-- R1 观测阵列 -->
+      <section class="panel" :class="{focused:focus==='sensor1'}" @click="focus='sensor1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">R1</span>
+          <h2>观测阵列<em>SENSOR ARRAY</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:scanPct>0&&scanPct<100}">扫描 {{ scanPct }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell"><div class="tele-label">光谱仪</div><div class="tele-value">{{ (sensor.spectral*100).toFixed(0) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">引力波阵</div><div class="tele-value">{{ (sensor.gravity*100).toFixed(0) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">射电阵列</div><div class="tele-value">{{ (sensor.radio*100).toFixed(0) }}<small>%</small></div></div>
+          </div>
+          <div class="log-title">深空扫描 · DEEP SCAN</div>
+          <div class="scanbar"><i :style="{width:scanPct+'%'}"></i></div>
+          <div class="orders">
+            <button class="cmd-btn" @click="startScan">发起扫描<em>SCAN</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- R2 异常信号 -->
+      <section class="panel" :class="{focused:focus==='sensor2'}" @click="focus='sensor2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">R2</span>
+          <h2>异常信号<em>ANOMALIES</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">待分析 {{ anomalies.filter(a=>a.status==='待分析').length }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="(a,i) in anomalies" :key="a.name" :class="{sel:selAnomaly===i}" @click="selectAnomaly(i)">
+            <span class="sn">{{ a.name }}</span>
+            <span class="sm">{{ a.status }}</span>
+            <span class="sv" :class="{warn:a.status==='待分析'}">{{ a.status==='已分析' ? '✓ 已归档' : '… 待分析' }}</span>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="analyzeAnomaly">分析选中异常<em>ANALYZE</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- R3 数据档案 -->
+      <section class="panel" :class="{focused:focus==='sensor3'}" @click="focus='sensor3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">R3</span>
+          <h2>数据档案<em>ARCHIVE</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">{{ sensor.backlog.toFixed(0) }}% 占用</span>
+        </header>
+        <div class="cmd-body">
+          <div class="stat-bars">
+            <div class="stat"><label>档案占用 <b>{{ sensor.backlog.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:sensor.backlog+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="packData">整理档案<em>PACK</em></button>
+          </div>
+          <div class="log-box">
+            <div class="log-title">科研日志 · RESEARCH LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in sensorLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1541,22 +1982,30 @@ const __app = createApp({
 
     /* ================= 视图切换（舰桥多视图） ================= */
     const view = ref('combat');
-    const viewButtons = [
-      {key:'combat', cn:'作战', en:'COMBAT'},
-      {key:'life',   cn:'维生', en:'LIFE'},
-      {key:'crew',   cn:'船员', en:'CREW'},
+    const VIEWS = [
+      {key:'combat', cn:'作战', en:'COMBAT', p1:'航行', p2:'命令', p3:'武器'},
+      {key:'life',   cn:'维生', en:'LIFE',   p1:'总控', p2:'分区', p3:'应急'},
+      {key:'staff',  cn:'岗位', en:'STAFF',  p1:'席位', p2:'轮班', p3:'调度'},
+      {key:'power',  cn:'动力', en:'POWER',  p1:'输出', p2:'负载', p3:'事件'},
+      {key:'cargo',  cn:'物资', en:'CARGO',  p1:'库存', p2:'详情', p3:'补给'},
+      {key:'hull',   cn:'损管', en:'HULL',   p1:'剖面', p2:'抢修', p3:'日志'},
+      {key:'med',    cn:'医疗', en:'MED',    p1:'指标', p2:'资源', p3:'记录'},
+      {key:'comms',  cn:'通信', en:'COMMS',  p1:'频道', p2:'破译', p3:'情报'},
+      {key:'sensor', cn:'科研', en:'SENSOR', p1:'观测', p2:'异常', p3:'档案'},
     ];
+    const viewButtons = VIEWS;
     function setView(k){
       if(view.value === k) return;
       view.value = k;
       focus.value = '';
-      const vn = viewButtons.find(v => v.key === k).cn;
+      const vn = VIEWS.find(v => v.key === k).cn;
       pushLog(`切换至「${vn}」控制台`,'info','系统');
       beep(520,0.05,'square',0.03);
     }
-    const keysHint = computed(()=> view.value === 'combat' ? '1 航行  2 命令  3 武器  空格 开火'
-      : view.value === 'life' ? '1 维生总控  2 环境分区  3 应急协议'
-      : '1 船员名册  2 船员状态  3 岗位分配');
+    const keysHint = computed(()=> {
+      const v = VIEWS.find(x => x.key === view.value);
+      return v ? `1 ${v.p1}  2 ${v.p2}  3 ${v.p3}` + (view.value === 'combat' ? '  空格 开火' : '') : '';
+    });
 
     /* ================= 维生系统 ================= */
     const life = reactive({ o2:78.5, co2:0.04, pressure:101.3, temp:21.5, humidity:42 });
@@ -1602,46 +2051,236 @@ const __app = createApp({
       beep(lifeEms[key] ? 660 : 420, 0.07, 'square', 0.035);
     }
 
-    /* ================= 船员管理 ================= */
+    /* ================= 岗位席位（抽象调度，不显示人名） ================= */
     const crew = reactive([
-      {id:1, name:'林晚星', role:'舰长',       status:'在岗', shift:'一班', station:'舰桥', health:92, stamina:78, morale:85},
-      {id:2, name:'陈启明', role:'导航员',     status:'在岗', shift:'一班', station:'舰桥', health:88, stamina:70, morale:80},
-      {id:3, name:'苏璃',   role:'武器官',     status:'在岗', shift:'二班', station:'武器', health:95, stamina:82, morale:88},
-      {id:4, name:'赵铁柱', role:'轮机长',     status:'在岗', shift:'二班', station:'动力', health:90, stamina:90, morale:72},
-      {id:5, name:'白鹭',   role:'医疗官',     status:'轮休', shift:'三班', station:'医疗', health:97, stamina:75, morale:90},
-      {id:6, name:'沈括',   role:'维生工程师', status:'休眠', shift:'三班', station:'维生', health:85, stamina:95, morale:76},
+      {id:1, status:'在岗', shift:'一班', station:'舰桥'},
+      {id:2, status:'在岗', shift:'一班', station:'舰桥'},
+      {id:3, status:'在岗', shift:'二班', station:'武器'},
+      {id:4, status:'在岗', shift:'二班', station:'动力'},
+      {id:5, status:'轮休', shift:'三班', station:'医疗'},
+      {id:6, status:'休眠', shift:'三班', station:'维生'},
     ]);
-    const selCrew = ref(1);
-    const selCrewObj = computed(()=> crew.find(c => c.id === selCrew.value) || crew[0]);
-    const stations = ['舰桥','动力','武器','医疗','维生'];
+    const STATION_MAX = {舰桥:2, 动力:2, 武器:2, 医疗:1, 维生:1, 引擎舱:1};
+    const staffRows = computed(()=> Object.keys(STATION_MAX).map(st => {
+      const count = crew.filter(c => c.station === st).length;
+      const max = STATION_MAX[st];
+      return { name: st, count, max, pct: Math.round(count / max * 100), state: count >= max ? '满编' : count > 0 ? '缺员' : '空缺' };
+    }));
+    const lowStaff = computed(()=> staffRows.value.filter(r => r.count < r.max));
+    const standbyCount = computed(()=> crew.filter(c => c.status === '休眠').length);
+    const fatigue = ref(46);
     const SHIFTS = [
       {name:'一班', time:'00:00-08:00'},
       {name:'二班', time:'08:00-16:00'},
       {name:'三班', time:'16:00-24:00'},
     ];
     const shiftInfo = computed(()=> SHIFTS.map(s => ({
-      name: s.name, time: s.time, count: crew.filter(c => c.shift === s.name).length
+      name: s.name, time: s.time,
+      count: crew.filter(c => c.shift === s.name).length,
+      coverage: Math.round(crew.filter(c => c.shift === s.name && c.status === '在岗').length / 2 * 100)
     })));
-    function stCls(st){ return st === '在岗' ? 'ok' : st === '轮休' ? 'warn' : 'dim'; }
-    function barCls(v){ return v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'crit'; }
-    function selectCrew(id){ selCrew.value = id; beep(520,0.04,'square',0.02); }
-    function crewAt(st){
-      const list = crew.filter(c => c.station === st);
-      return list.length ? list.map(c => c.name).join('、') : '—';
-    }
-    function assignStation(st){
-      const c = selCrewObj.value;
-      if(c.id === 1){ pushLog('舰长必须留守舰桥','warn','系统'); beep(140,0.2,'square',0.04); return; }
-      if(c.station === st){ pushLog(`${c.name} 已在「${st}」岗位`,'info','系统'); return; }
-      c.station = st;
-      pushLog(`${c.name} 调任 → 「${st}」岗位`,'cmd','舰长');
+    const selStaff = ref(0);
+    const selStaffObj = computed(()=> staffRows.value[selStaff.value] || staffRows.value[0]);
+    const staffLogs = computed(()=> log.value.filter(i => i.src === '调度'));
+    function selectStaff(i){ selStaff.value = i; beep(520,0.04,'square',0.02); }
+    function deployCrew(){
+      const st = selStaffObj.value;
+      const c = crew.find(m => m.status === '休眠');
+      if(!c){ pushLog('待命池无可用人员','warn','调度'); beep(140,0.2,'square',0.04); return; }
+      if(st.count >= st.max){ pushLog(`「${st.name}」已满编`,'info','调度'); return; }
+      c.status = '在岗'; c.station = st.name; c.shift = '一班';
+      pushLog(`「${st.name}」补员完成 · 待命池剩余 ${standbyCount.value} 人`,'cmd','调度');
       beep(640,0.06,'square',0.03);
     }
     function rotateShifts(){
       const order = ['一班','二班','三班'];
       crew.forEach(c => { c.shift = order[(order.indexOf(c.shift) + 1) % 3]; });
-      pushLog('轮班表已轮换：一班→二班 · 二班→三班 · 三班→一班','cmd','舰长');
+      pushLog('轮班表已轮换：一班→二班 · 二班→三班 · 三班→一班','cmd','调度');
       beep(640,0.06,'sine',0.04);
+    }
+    function barCls(v){ return v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'crit'; }
+
+    /* ================= 动力与能量管理 ================= */
+    const power = reactive({
+      reactor: 72,
+      branches: { thrust:35, shield:25, weapons:20, life:10, thermo:5, habitat:5 },
+      emergency: false,
+    });
+    const powerBranches = [
+      {key:'thrust',  cn:'推进',   en:'THRUST'},
+      {key:'shield',  cn:'护盾',   en:'SHIELD'},
+      {key:'weapons', cn:'武器',   en:'WEAPONS'},
+      {key:'life',    cn:'维生',   en:'LIFE'},
+      {key:'thermo',  cn:'温控',   en:'THERMO'},
+      {key:'habitat', cn:'生活舱', en:'HABITAT'},
+    ];
+    const powerTotal = computed(()=> Object.values(power.branches).reduce((a,b)=>a+b,0));
+    const powerLogs = computed(()=> log.value.filter(i => i.src === '动力'));
+    function loadState(key){
+      const v = power.branches[key];
+      return v >= 75 ? '高载' : v <= 15 ? '低载' : '正常';
+    }
+    function setBranch(key, val){
+      power.branches[key] = Math.max(0, Math.min(100, Number(val) || 0));
+      pushLog(`动力分配调整 → ${powerBranches.find(b=>b.key===key).cn} ${power.branches[key]}%`,'info','动力');
+    }
+    function toggleEmergency(){
+      power.emergency = !power.emergency;
+      if(power.emergency){
+        power.branches.weapons = 90; power.branches.thrust = 60; power.branches.shield = 70;
+        power.branches.life = 15; power.branches.thermo = 5; power.branches.habitat = 5;
+        pushLog('紧急动力模式启动：全功率优先武器与护盾','crit','动力');
+      }else{
+        power.branches = { thrust:35, shield:25, weapons:20, life:10, thermo:5, habitat:5 };
+        pushLog('动力分配恢复标准模式','info','动力');
+      }
+      beep(power.emergency ? 660 : 420, 0.07, 'square', 0.035);
+    }
+
+    /* ================= 物资与补给 ================= */
+    const cargo = reactive([
+      {name:'推进剂', en:'PROPELLANT', amount:73, max:100, rate:0.04},
+      {name:'弹药',   en:'ORDNANCE',   amount:64, max:100, rate:0.02},
+      {name:'食物',   en:'FOOD',       amount:81, max:100, rate:0.03},
+      {name:'药品',   en:'MEDS',       amount:58, max:100, rate:0.015},
+      {name:'备件',   en:'SPARES',     amount:47, max:100, rate:0.01},
+    ]);
+    const selCargo = ref(0);
+    const selCargoObj = computed(()=> cargo[selCargo.value] || cargo[0]);
+    const rationing = ref(false);
+    const lowCargo = computed(()=> cargo.filter(c => c.amount < 30));
+    const cargoLogs = computed(()=> log.value.filter(i => i.src === '物资'));
+    function selectCargo(i){ selCargo.value = i; beep(520,0.04,'square',0.02); }
+    function cargoEta(item){
+      const r = rationing.value && item.name === '食物' ? item.rate * 0.4 : item.rate;
+      return Math.max(0, Math.round(item.amount / (r * 30)));
+    }
+    function requestSupply(){
+      const it = selCargoObj.value;
+      it.amount = it.max;
+      pushLog(`${it.name} 补给完成 → ${it.max}%`,'ok','物资');
+      beep(640,0.06,'square',0.03);
+    }
+    function toggleRationing(){
+      rationing.value = !rationing.value;
+      pushLog(`紧急配给${rationing.value ? '启动：食物消耗降低 60%' : '解除'}`, rationing.value ? 'warn' : 'info', '物资');
+      beep(rationing.value ? 420 : 640, 0.06, 'square', 0.03);
+    }
+
+    /* ================= 舰体结构与损管 ================= */
+    const hull = reactive([
+      {name:'舰首装甲', integrity:96}, {name:'前舱段', integrity:92}, {name:'舰桥', integrity:100},
+      {name:'中段结构', integrity:88}, {name:'货舱', integrity:90}, {name:'引擎舱', integrity:95},
+      {name:'左舷', integrity:93}, {name:'右舷', integrity:91},
+    ]);
+    const selHull = ref(2);
+    const selHullObj = computed(()=> hull[selHull.value] || hull[0]);
+    const repairTeams = ref(3);
+    const hullOverall = computed(()=> Math.round(hull.reduce((a,b)=>a+b.integrity,0) / hull.length));
+    const hullLogs = computed(()=> log.value.filter(i => i.src === '损管'));
+    function selectHull(i){ selHull.value = i; beep(520,0.04,'square',0.02); }
+    function deployRepair(){
+      const h = selHullObj.value;
+      if(h.integrity >= 100){ pushLog(`「${h.name}」结构完好，无需抢修`,'info','损管'); return; }
+      if(repairTeams.value <= 0){ pushLog('抢修小组已全部部署','warn','损管'); beep(140,0.2,'square',0.04); return; }
+      repairTeams.value--;
+      h.integrity = Math.min(100, h.integrity + 12);
+      pushLog(`抢修组部署 → 「${h.name}」修复至 ${h.integrity}% · 可用小组 ${repairTeams.value}`,'cmd','损管');
+      beep(640,0.06,'square',0.03);
+    }
+    function recallRepair(){
+      if(repairTeams.value >= 3){ pushLog('抢修小组已全部待命','info','损管'); return; }
+      repairTeams.value++;
+      pushLog(`抢修组返回待命 · 可用小组 ${repairTeams.value}`,'info','损管');
+      beep(420,0.06,'square',0.03);
+    }
+
+    /* ================= 医疗与健康（聚合指标） ================= */
+    const med = reactive({ index:88, patients:2, occupancy:40, exposure:12, psych:82 });
+    const medRes = reactive({ drugs:65, vaccine:70, beds:5 });
+    const screening = ref(false);
+    const medLogs = computed(()=> log.value.filter(i => i.src === '医疗'));
+    function runScreening(){
+      if(screening.value) return;
+      screening.value = true;
+      med.index = Math.min(100, med.index + 2);
+      pushLog('全舰例行体检完成 · 健康指数上升','ok','医疗');
+      beep(640,0.06,'sine',0.04);
+      setTimeout(()=> screening.value = false, 1500);
+    }
+    function pandemicDrill(){
+      pushLog('疫情应急演练结束 · 隔离舱位与净化流程验证通过','cmd','医疗');
+      beep(660,0.06,'square',0.03);
+    }
+
+    /* ================= 通信与情报 ================= */
+    const channels = reactive([
+      {name:'深空网',   freq:'21.4 GHz', sig:87},
+      {name:'地球站',   freq:'8.4 GHz',  sig:64},
+      {name:'联络信标', freq:'2.1 GHz',  sig:42},
+      {name:'未知信号', freq:'13.7 GHz', sig:18},
+    ]);
+    const selChan = ref(0);
+    const selChanObj = computed(()=> channels[selChan.value] || channels[0]);
+    const msgQueue = ref(['深空网：例行遥测确认接收','地球站：任务参数更新已同步','未知信号：检测到重复模式 0x7F3A']);
+    const decipherPct = ref(0);
+    let decipherTimer = null;
+    const commsLogs = computed(()=> log.value.filter(i => i.src === '通信'));
+    function selectChan(i){ selChan.value = i; beep(520,0.04,'square',0.02); }
+    function sendBeacon(){
+      pushLog('联络信标已发出 · 等待应答','cmd','通信');
+      beep(1200,0.08,'sine',0.05);
+    }
+    function decipher(){
+      if(decipherPct.value > 0 && decipherPct.value < 100) return;
+      decipherPct.value = 0;
+      pushLog('开始破译未知信号数据包…','info','通信');
+      decipherTimer = setInterval(()=>{
+        decipherPct.value = Math.min(100, decipherPct.value + 12);
+        if(decipherPct.value >= 100){
+          clearInterval(decipherTimer); decipherTimer = null;
+          pushLog('破译完成：「目标天体 T-04 存在规律性引力波特征」','ok','通信');
+          beep(880,0.12,'sine',0.05);
+        }
+      }, 250);
+    }
+
+    /* ================= 科研观测 ================= */
+    const sensor = reactive({ spectral:0.87, gravity:0.64, radio:0.42, backlog:35 });
+    const anomalies = reactive([
+      {name:'异常信号 A-01', status:'待分析'},
+      {name:'引力异常 G-02', status:'待分析'},
+      {name:'光学事件 O-03', status:'待分析'},
+    ]);
+    const selAnomaly = ref(0);
+    const scanPct = ref(0);
+    let scanTimer = null;
+    const sensorLogs = computed(()=> log.value.filter(i => i.src === '科研'));
+    function startScan(){
+      if(scanPct.value > 0 && scanPct.value < 100) return;
+      scanPct.value = 0;
+      pushLog('深空扫描启动：频谱 + 引力波阵列','info','科研');
+      scanTimer = setInterval(()=>{
+        scanPct.value = Math.min(100, scanPct.value + 5);
+        if(scanPct.value >= 100){
+          clearInterval(scanTimer); scanTimer = null;
+          pushLog('扫描完成：新发现 1 个异常信号（待分析）','ok','科研');
+          beep(880,0.1,'sine',0.04);
+        }
+      }, 300);
+    }
+    function selectAnomaly(i){ selAnomaly.value = i; beep(520,0.04,'square',0.02); }
+    function analyzeAnomaly(){
+      const a = anomalies[selAnomaly.value];
+      if(a.status === '已分析'){ pushLog(`${a.name} 已归档`,'info','科研'); return; }
+      a.status = '已分析';
+      pushLog(`${a.name} 分析完成：与深空引力异常高度相关`,'cmd','科研');
+      beep(640,0.06,'square',0.03);
+    }
+    function packData(){
+      sensor.backlog = Math.max(0, sensor.backlog - 10);
+      pushLog('数据档案整理完成 · 待归档 -10%','info','科研');
+      beep(420,0.06,'square',0.03);
     }
 
     /* ================= AI 副官 ================= */
@@ -1715,25 +2354,39 @@ const __app = createApp({
       life.pressure += (101.3 - life.pressure) * 0.01;
       life.humidity += lifeSystems.hydro ? (45 - life.humidity) * 0.02 : (Math.random() - 0.5) * 0.5;
       zones.forEach(z => { z.temp += (Math.random() - 0.5) * 0.1; z.o2 = Math.min(100, Math.max(0, life.o2 + (Math.random() - 0.5) * 1.2)); });
-      /* 船员数值微漂移 */
-      crew.forEach(c => {
-        c.stamina = Math.max(10, Math.min(100, c.stamina + (Math.random() - 0.5) * 1.2));
-        c.morale  = Math.max(10, Math.min(100, c.morale  + (Math.random() - 0.5) * 0.8));
-        if(Math.random() < 0.1) c.health = Math.max(30, Math.min(100, c.health + (Math.random() - 0.5) * 1));
+      /* 动力漂移 */
+      power.reactor = Math.max(40, Math.min(100, power.reactor + (Math.random() - 0.5) * 0.6));
+      /* 物资消耗 */
+      cargo.forEach(c => {
+        c.amount = Math.max(0, c.amount - (rationing.value && c.name === '食物' ? c.rate * 0.4 : c.rate));
       });
+      /* 舰体漂移：作战模式下随机受损 */
+      hull.forEach(h => {
+        if(alertLevel.value === 'combat' && Math.random() < 0.05) h.integrity = Math.max(20, h.integrity - 1);
+      });
+      /* 医疗漂移 */
+      med.exposure = Math.min(100, med.exposure + 0.01);
+      med.index = Math.max(40, Math.min(100, med.index + (Math.random() - 0.5) * 0.5));
+      /* 通信信号抖动 */
+      channels.forEach(c => { c.sig = Math.max(5, Math.min(100, c.sig + (Math.random() - 0.5) * 2)); });
+      /* 科研档案缓慢增长 */
+      sensor.backlog = Math.min(100, sensor.backlog + 0.03);
+      /* 疲劳指数漂移 */
+      fatigue.value = Math.max(20, Math.min(90, fatigue.value + (Math.random() - 0.5) * 0.8));
       ti = (ti+1) % tickPool.length; tickerText.value = tickPool[ti];
     }
 
     /* ================= 键盘快捷键 ================= */
     function onKey(e){
       if(!bootDone.value) return;
-      const f1 = view.value === 'combat' ? 'nav'   : view.value === 'life' ? 'life1' : 'crew1';
-      const f2 = view.value === 'combat' ? 'cmd'   : view.value === 'life' ? 'life2' : 'crew2';
-      const f3 = view.value === 'combat' ? 'wpn'   : view.value === 'life' ? 'life3' : 'crew3';
+      const vk = view.value;
+      const f1 = vk === 'combat' ? 'nav' : vk + '1';
+      const f2 = vk === 'combat' ? 'cmd' : vk + '2';
+      const f3 = vk === 'combat' ? 'wpn' : vk + '3';
       if(e.key === '1')      focus.value = f1;
       else if(e.key === '2') focus.value = f2;
       else if(e.key === '3') focus.value = f3;
-      else if(e.key === ' '){ e.preventDefault(); if(view.value === 'combat') fireWeapon(); }
+      else if(e.key === ' '){ e.preventDefault(); if(vk === 'combat') fireWeapon(); }
     }
 
     /* ================= 挂载 / 卸载 ================= */
@@ -1797,8 +2450,19 @@ const __app = createApp({
       life, lifeSystems, lifeSysButtons, toggleLifeSystem,
       zones, selZone, selZoneObj, setZone,
       lifeEms, lifeEmsButtons, toggleLifeEms, lifeTip, lifeLogs,
-      crew, selCrew, selCrewObj, selectCrew, stations, crewAt, assignStation,
-      shiftInfo, rotateShifts, stCls, barCls,
+      crew, staffRows, lowStaff, standbyCount, fatigue,
+      selStaff, selStaffObj, selectStaff, deployCrew, staffLogs,
+      shiftInfo, rotateShifts, barCls,
+      power, powerBranches, powerTotal, loadState, setBranch, toggleEmergency, powerLogs,
+      cargo, selCargo, selCargoObj, selectCargo, cargoEta, lowCargo,
+      requestSupply, rationing, toggleRationing, cargoLogs,
+      hull, selHull, selHullObj, selectHull, repairTeams, hullOverall,
+      deployRepair, recallRepair, hullLogs,
+      med, medRes, screening, runScreening, pandemicDrill, medLogs,
+      channels, selChan, selChanObj, selectChan, msgQueue,
+      decipherPct, decipher, sendBeacon, commsLogs,
+      sensor, anomalies, selAnomaly, selectAnomaly,
+      startScan, scanPct, analyzeAnomaly, packData, sensorLogs,
       warpReady, warping, btnCls, btnLabel, btnEn, btnClick,
       aiText, tickerText, reactorLoad, shieldPct,
     };
