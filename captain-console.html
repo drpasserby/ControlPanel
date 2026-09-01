@@ -115,8 +115,8 @@
   .view-switch{display:flex;border:1px solid var(--line)}
   .view-switch button{
     background:transparent;border:0;color:var(--dim2);
-    font-family:'Noto Sans SC',sans-serif;font-size:12px;letter-spacing:.16em;
-    padding:4px 14px;cursor:pointer;transition:all .2s;
+    font-family:'Noto Sans SC',sans-serif;font-size:11px;letter-spacing:.12em;
+    padding:3px 10px;cursor:pointer;transition:all .2s;
     border-right:1px solid var(--line2);
   }
   .view-switch button:last-child{border-right:0}
@@ -344,18 +344,7 @@
   .fire-btn.shoot:hover{background:rgba(224,86,79,.16);color:#ffd9d6}
   .fire-btn:disabled{opacity:.35;cursor:not-allowed}
 
-  /* ---------- 船员视图 ---------- */
-  .crew-list{display:flex;flex-direction:column;gap:1px;background:var(--line2);border:1px solid var(--line2);flex:none}
-  .crew-row{display:flex;align-items:center;gap:10px;background:var(--panel);padding:8px 10px;cursor:pointer;border-left:2px solid transparent;transition:background .15s}
-  .crew-row:hover{background:rgba(148,168,190,.05)}
-  .crew-row.sel{border-left-color:var(--acc);background:rgba(111,195,201,.07)}
-  .cr-name{font-size:12px;letter-spacing:.1em;min-width:52px}
-  .cr-role{flex:1;font-size:10px;color:var(--dim2);letter-spacing:.08em}
-  .cr-st{font-size:9px;padding:1px 6px;border:1px solid var(--line2);color:var(--dim2);letter-spacing:.12em}
-  .cr-st.st-ok{color:var(--ok);border-color:rgba(143,191,122,.4)}
-  .cr-st.st-warn{color:var(--warn);border-color:rgba(217,164,65,.4)}
-  .cr-st.st-dim{color:var(--dim)}
-
+  /* ---------- 岗位/详情卡片 ---------- */
   .crew-card{border:1px solid var(--line2);padding:10px 12px;flex:none}
   .cc-name{font-size:15px;letter-spacing:.18em;color:#e6ecf1}
   .cc-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:9px;color:var(--dim);margin-left:8px;letter-spacing:.2em}
@@ -376,11 +365,41 @@
   .sr-time{font-family:'Share Tech Mono',monospace;color:var(--dim);flex:1;letter-spacing:.1em}
   .shift-row b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--acc)}
 
-  .station-list{display:flex;flex-direction:column;gap:1px;background:var(--line2);border:1px solid var(--line2);flex:none}
-  .station{display:flex;align-items:center;gap:10px;background:var(--panel);padding:8px 10px;cursor:pointer;transition:background .15s}
-  .station:hover{background:rgba(111,195,201,.08)}
-  .st-name{font-size:12px;letter-spacing:.14em;min-width:52px}
-  .st-crew{flex:1;font-size:10px;color:var(--dim2);text-align:right;letter-spacing:.06em}
+  /* ---------- 通用系统行（岗位/物资/通信/科研共用） ---------- */
+  .srow{display:flex;align-items:center;gap:10px;padding:7px 10px;border-left:2px solid transparent;cursor:pointer;transition:background .15s;flex:none}
+  .srow:hover{background:rgba(148,168,190,.05)}
+  .srow.sel{border-left-color:var(--acc);background:rgba(111,195,201,.07)}
+  .srow .sn{font-size:11px;letter-spacing:.1em;min-width:56px;color:#e6ecf1}
+  .srow .sm{flex:1;font-size:9px;color:var(--dim);letter-spacing:.1em}
+  .srow .sb{width:90px;height:4px;background:rgba(255,255,255,.07);flex:none}
+  .srow .sb i{display:block;height:100%;background:var(--acc);transition:width .3s}
+  .srow .sb i.ok{background:var(--ok)}
+  .srow .sb i.warn{background:var(--warn)}
+  .srow .sb i.crit{background:var(--crit)}
+  .srow .sv{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim2);min-width:34px;text-align:right}
+  .srow .sv.warn{color:var(--warn)}
+
+  .pwr-list{display:flex;flex-direction:column;gap:2px;flex:none}
+  .pwr-row{display:flex;align-items:center;gap:10px;padding:5px 2px}
+  .pr-name{font-size:11px;letter-spacing:.1em;min-width:52px}
+  .pwr-row input[type=range]{flex:1;accent-color:var(--acc);height:2px;cursor:pointer}
+  .pr-val{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--acc);min-width:38px;text-align:right}
+
+  .hull-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}
+  .hull-cell{border:1px solid var(--line2);padding:6px 8px;cursor:pointer;transition:all .15s}
+  .hull-cell:hover{background:rgba(148,168,190,.05)}
+  .hull-cell.sel{border-color:var(--acc);background:rgba(111,195,201,.07)}
+  .hull-cell .hc-name{font-size:10px;color:var(--dim2);letter-spacing:.1em}
+  .hull-cell .hc-val{font-family:'Share Tech Mono',monospace;font-size:13px;margin-top:2px}
+  .hull-cell .hc-val.ok{color:var(--ok)}
+  .hull-cell .hc-val.warn{color:var(--warn)}
+  .hull-cell .hc-val.crit{color:var(--crit)}
+
+  .scanbar{height:6px;background:rgba(255,255,255,.07);position:relative;margin:6px 0;flex:none}
+  .scanbar i{display:block;height:100%;background:var(--acc);transition:width .25s}
+
+  .msg-box{display:flex;flex-direction:column;gap:4px;flex:none}
+  .msg{font-size:10px;color:var(--dim2);border:1px solid var(--line2);padding:5px 8px;letter-spacing:.05em}
 
   /* ---------- 底栏 ---------- */
   .bottombar{
