@@ -722,168 +722,6 @@
     </section>
     </div>
 
-    <!-- ============ 视图：维生 ============ -->
-    <div class="viewgrid" v-show="view==='life'">
-
-      <!-- L1 生命维持总控 -->
-      <section class="panel" :class="{focused:focus==='life1'}" @click="focus='life1'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">L1</span>
-          <h2>维生总控<em>LIFE CORE</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state" :class="{on:life.o2&lt;70}">{{ life.o2&lt;70 ? '低氧警报' : '运行中' }}</span>
-        </header>
-        <div class="cmd-body">
-          <div class="telemetry">
-            <div class="tele-cell" :class="{warn:life.o2&lt;70}"><div class="tele-label">氧气 / O₂</div><div class="tele-value">{{ life.o2.toFixed(1) }}<small>%</small></div></div>
-            <div class="tele-cell" :class="{warn:life.co2&gt;0.08}"><div class="tele-label">二氧化碳 / CO₂</div><div class="tele-value">{{ life.co2.toFixed(3) }}<small>%</small></div></div>
-            <div class="tele-cell"><div class="tele-label">舱压 / PRESSURE</div><div class="tele-value">{{ life.pressure.toFixed(1) }}<small>kPa</small></div></div>
-            <div class="tele-cell"><div class="tele-label">温度 / TEMP</div><div class="tele-value">{{ life.temp.toFixed(1) }}<small>°C</small></div></div>
-            <div class="tele-cell"><div class="tele-label">湿度 / HUMIDITY</div><div class="tele-value">{{ life.humidity.toFixed(0) }}<small>%</small></div></div>
-          </div>
-          <div class="orders">
-            <button class="cmd-btn" v-for="s in lifeSysButtons" :key="s.key" :class="{on:lifeSystems[s.key]}" @click="toggleLifeSystem(s.key)">
-              {{ s.cn }}<em>{{ s.en }}</em>
-            </button>
-          </div>
-          <div class="ai-line">
-            <span class="ai-tag">维生</span>
-            <span class="ai-text">{{ lifeTip }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- L2 环境分区 -->
-      <section class="panel" :class="{focused:focus==='life2'}" @click="focus='life2'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">L2</span>
-          <h2>环境分区<em>ZONES</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state" :class="{on:selZoneObj.status==='偏热'}">{{ selZoneObj.status }}</span>
-        </header>
-        <div class="cmd-body">
-          <div class="wplist">
-            <div class="wp" v-for="(z,i) in zones" :key="z.name" :class="{active:selZone===i}" @click="setZone(i)">
-              <span class="wp-name">{{ z.name }}</span>
-              <span class="wp-meta">{{ z.temp.toFixed(1) }}°C · O₂ {{ z.o2.toFixed(1) }}% · {{ z.status }}</span>
-            </div>
-          </div>
-          <div class="ai-line">
-            <span class="ai-tag">分区</span>
-            <span class="ai-text">已选中「{{ selZoneObj.name }}」：温度 {{ selZoneObj.temp.toFixed(1) }}°C · 氧气 {{ selZoneObj.o2.toFixed(1) }}%</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- L3 应急协议 -->
-      <section class="panel" :class="{focused:focus==='life3'}" @click="focus='life3'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">L3</span>
-          <h2>应急协议<em>EMERGENCY</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state" :class="{on:lifeEms.lockdown||lifeEms.airlock||lifeEms.radshield}">就绪</span>
-        </header>
-        <div class="cmd-body">
-          <div class="orders">
-            <button class="cmd-btn" v-for="e in lifeEmsButtons" :key="e.key" :class="{on:lifeEms[e.key]}" @click="toggleLifeEms(e.key)">
-              {{ e.cn }}<em>{{ e.en }}</em>
-            </button>
-          </div>
-          <div class="log-box">
-            <div class="log-title">维生日志 · LIFE LOG</div>
-            <div class="log-feed">
-              <div class="log-item" v-for="(item,i) in lifeLogs" :key="i" :class="'t-'+item.type">
-                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-    </div>
-
-    <!-- ============ 视图：岗位 ============ -->
-    <div class="viewgrid" v-show="view==='staff'">
-
-      <!-- S1 岗位席位 -->
-      <section class="panel" :class="{focused:focus==='staff1'}" @click="focus='staff1'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">S1</span>
-          <h2>岗位席位<em>STAFFING</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state" :class="{on:lowStaff.length>0}">{{ lowStaff.length>0 ? lowStaff.length+' 处缺员' : '满编' }}</span>
-        </header>
-        <div class="cmd-body">
-          <div class="srow" v-for="(r,i) in staffRows" :key="r.name" :class="{sel:selStaff===i}" @click="selectStaff(i)">
-            <span class="sn">{{ r.name }}</span>
-            <span class="sm">{{ r.count }}/{{ r.max }} · {{ r.state }}</span>
-            <span class="sb"><i :class="barCls(r.pct)" :style="{width:r.pct+'%'}"></i></span>
-            <span class="sv">{{ r.pct }}%</span>
-          </div>
-          <div class="ai-line">
-            <span class="ai-tag">待命池</span>
-            <span class="ai-text">{{ standbyCount }} 人可用 · 疲劳指数 {{ fatigue.toFixed(0) }}%</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- S2 轮班覆盖 -->
-      <section class="panel" :class="{focused:focus==='staff2'}" @click="focus='staff2'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">S2</span>
-          <h2>轮班覆盖<em>SHIFT COVERAGE</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state" :class="{on:fatigue>70}">疲劳 {{ fatigue.toFixed(0) }}%</span>
-        </header>
-        <div class="cmd-body">
-          <div class="shift-box">
-            <div class="log-title">三班覆盖 · SHIFTS</div>
-            <div class="shift-row" v-for="sh in shiftInfo" :key="sh.name">
-              <span class="sr-name">{{ sh.name }}</span>
-              <span class="sr-time">{{ sh.time }}</span>
-              <b>{{ sh.count }} 人 · 覆盖 {{ sh.coverage }}%</b>
-            </div>
-            <button class="adv-btn" @click="rotateShifts">轮换轮班 · ROTATE SHIFTS</button>
-          </div>
-          <div class="stat-bars">
-            <div class="stat"><label>疲劳指数 <b>{{ fatigue.toFixed(0) }}</b></label><div class="bar"><i :class="barCls(100-fatigue.value)" :style="{width:fatigue.value+'%'}"></i></div></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- S3 人员调度 -->
-      <section class="panel" :class="{focused:focus==='staff3'}" @click="focus='staff3'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">S3</span>
-          <h2>人员调度<em>DEPLOYMENT</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state">选中：{{ selStaffObj.name }}</span>
-        </header>
-        <div class="cmd-body">
-          <div class="log-title">从待命池向选中岗位补员 · 空缺岗位优先</div>
-          <div class="orders">
-            <button class="cmd-btn" @click="deployCrew">补员部署<em>DEPLOY</em></button>
-            <button class="cmd-btn" @click="rotateShifts">轮换轮班<em>SHIFTS</em></button>
-          </div>
-          <div class="log-box">
-            <div class="log-title">调度记录 · STAFF LOG</div>
-            <div class="log-feed">
-              <div class="log-item" v-for="(item,i) in staffLogs" :key="i" :class="'t-'+item.type">
-                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-    </div>
-
     <!-- ============ 视图：动力 ============ -->
     <div class="viewgrid" v-show="view==='power'">
 
@@ -960,7 +798,7 @@
 
     </div>
 
-    <!-- ============ 视图：物资 ============ -->
+    <!-- ============ 视图：物资（含维生子板块） ============ -->
     <div class="viewgrid" v-show="view==='cargo'">
 
       <!-- G1 库存总览 -->
@@ -986,12 +824,12 @@
         </div>
       </section>
 
-      <!-- G2 详情与补给 -->
+      <!-- G2 详情·补给·物资日志 -->
       <section class="panel" :class="{focused:focus==='cargo2'}" @click="focus='cargo2'">
         <i class="corners"><i></i><i></i><i></i><i></i></i>
         <header class="ph">
           <span class="ph-idx">G2</span>
-          <h2>详情与补给<em>DETAIL</em></h2>
+          <h2>详情·补给·日志<em>DETAIL / SUPPLY</em></h2>
           <span class="ph-line"></span>
           <span class="ph-state" :class="{on:rationing}">配给中</span>
         </header>
@@ -1007,19 +845,6 @@
             <button class="cmd-btn" @click="requestSupply">补给请求<em>RESUPPLY</em></button>
             <button class="cmd-btn" :class="{on:rationing}" @click="toggleRationing">紧急配给<em>RATIONING</em></button>
           </div>
-        </div>
-      </section>
-
-      <!-- G3 物资日志 -->
-      <section class="panel" :class="{focused:focus==='cargo3'}" @click="focus='cargo3'">
-        <i class="corners"><i></i><i></i><i></i><i></i></i>
-        <header class="ph">
-          <span class="ph-idx">G3</span>
-          <h2>物资日志<em>CARGO LOG</em></h2>
-          <span class="ph-line"></span>
-          <span class="ph-state">补给记录</span>
-        </header>
-        <div class="cmd-body">
           <div class="log-box">
             <div class="log-title">物资日志 · CARGO LOG</div>
             <div class="log-feed">
@@ -1027,6 +852,41 @@
                 <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- G3 维生子板块：维生总控 + 应急协议 -->
+      <section class="panel" :class="{focused:focus==='cargo3'}" @click="focus='cargo3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G3</span>
+          <h2>维生·总控<em>LIFE SUPPORT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:life.o2<70}">{{ life.o2<70 ? '低氧警报' : '运行中' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell" :class="{warn:life.o2<70}"><div class="tele-label">氧气 / O₂</div><div class="tele-value">{{ life.o2.toFixed(1) }}<small>%</small></div></div>
+            <div class="tele-cell" :class="{warn:life.co2>0.08}"><div class="tele-label">CO₂</div><div class="tele-value">{{ life.co2.toFixed(3) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">舱压</div><div class="tele-value">{{ life.pressure.toFixed(1) }}<small>kPa</small></div></div>
+            <div class="tele-cell"><div class="tele-label">温度</div><div class="tele-value">{{ life.temp.toFixed(1) }}<small>°C</small></div></div>
+            <div class="tele-cell"><div class="tele-label">湿度</div><div class="tele-value">{{ life.humidity.toFixed(0) }}<small>%</small></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" v-for="s in lifeSysButtons" :key="s.key" :class="{on:lifeSystems[s.key]}" @click="toggleLifeSystem(s.key)">
+              {{ s.cn }}<em>{{ s.en }}</em>
+            </button>
+          </div>
+          <div class="log-title">应急协议 · EMERGENCY</div>
+          <div class="orders">
+            <button class="cmd-btn" v-for="e in lifeEmsButtons" :key="e.key" :class="{on:lifeEms[e.key]}" @click="toggleLifeEms(e.key)">
+              {{ e.cn }}<em>{{ e.en }}</em>
+            </button>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">维生</span>
+            <span class="ai-text">{{ lifeTip }}</span>
           </div>
         </div>
       </section>
@@ -2003,10 +1863,8 @@ const __app = createApp({
     const view = ref('combat');
     const VIEWS = [
       {key:'combat', cn:'作战', en:'COMBAT', p1:'航行', p2:'命令', p3:'武器'},
-      {key:'life',   cn:'维生', en:'LIFE',   p1:'总控', p2:'分区', p3:'应急'},
-      {key:'staff',  cn:'岗位', en:'STAFF',  p1:'席位', p2:'轮班', p3:'调度'},
+      {key:'cargo',  cn:'物资', en:'CARGO',  p1:'库存', p2:'详情·日志', p3:'维生'},
       {key:'power',  cn:'动力', en:'POWER',  p1:'输出', p2:'负载', p3:'事件'},
-      {key:'cargo',  cn:'物资', en:'CARGO',  p1:'库存', p2:'详情', p3:'补给'},
       {key:'hull',   cn:'损管', en:'HULL',   p1:'剖面', p2:'抢修', p3:'日志'},
       {key:'med',    cn:'医疗', en:'MED',    p1:'指标', p2:'资源', p3:'记录'},
       {key:'comms',  cn:'通信', en:'COMMS',  p1:'频道', p2:'破译', p3:'情报'},
@@ -2035,14 +1893,6 @@ const __app = createApp({
       {key:'thermo',   cn:'温度调控', en:'THERMO'},
       {key:'hydro',    cn:'水培循环', en:'HYDRO'},
     ];
-    const zones = reactive([
-      {name:'舰桥',   temp:21.2, o2:78.4, status:'正常'},
-      {name:'居住区', temp:22.1, o2:77.9, status:'正常'},
-      {name:'货舱',   temp:18.6, o2:76.2, status:'正常'},
-      {name:'引擎舱', temp:34.8, o2:72.5, status:'偏热'},
-    ]);
-    const selZone = ref(0);
-    const selZoneObj = computed(()=> zones[selZone.value] || zones[0]);
     const lifeEms = reactive({ lockdown:false, airlock:false, radshield:false });
     const lifeEmsButtons = [
       {key:'lockdown', cn:'减压封锁', en:'LOCKDOWN'},
@@ -2052,70 +1902,20 @@ const __app = createApp({
     const lifeTip = computed(()=>{
       if(life.o2 < 70) return '氧气浓度偏低，建议启动制氧循环！';
       if(life.co2 > 0.08) return 'CO₂ 浓度偏高，净化系统负载增大。';
-      if(selZoneObj.status === '偏热') return `「${selZoneObj.name}」温度异常，建议检查温控。`;
+      if(life.temp > 26) return '舱内温度偏高，建议加强温控。';
       return '生命维持系统运行稳定，所有指标正常。';
     });
-    const lifeLogs = computed(()=> log.value.filter(i => i.src === '维生'));
     function toggleLifeSystem(key){
       lifeSystems[key] = !lifeSystems[key];
       const MSG = { oxy:'制氧循环', scrubber:'CO₂ 净化', thermo:'温度调控', hydro:'水培循环' };
       pushLog(`${MSG[key]} ${lifeSystems[key] ? '启动' : '关闭'}`, lifeSystems[key] ? 'ok' : 'info', '维生');
       beep(lifeSystems[key] ? 520 : 380, 0.06, 'square', 0.03);
     }
-    function setZone(i){ selZone.value = i; beep(520,0.04,'square',0.02); }
     function toggleLifeEms(key){
       lifeEms[key] = !lifeEms[key];
       const MSG = { lockdown:'紧急减压封锁', airlock:'气闸隔离', radshield:'辐射屏蔽阵列' };
       pushLog(`${MSG[key]}已${lifeEms[key] ? '启动' : '解除'}`, lifeEms[key] ? 'ok' : 'info', '维生');
       beep(lifeEms[key] ? 660 : 420, 0.07, 'square', 0.035);
-    }
-
-    /* ================= 岗位席位（抽象调度，不显示人名） ================= */
-    const crew = reactive([
-      {id:1, status:'在岗', shift:'一班', station:'舰桥'},
-      {id:2, status:'在岗', shift:'一班', station:'舰桥'},
-      {id:3, status:'在岗', shift:'二班', station:'武器'},
-      {id:4, status:'在岗', shift:'二班', station:'动力'},
-      {id:5, status:'轮休', shift:'三班', station:'医疗'},
-      {id:6, status:'休眠', shift:'三班', station:'维生'},
-    ]);
-    const STATION_MAX = {舰桥:2, 动力:2, 武器:2, 医疗:1, 维生:1, 引擎舱:1};
-    const staffRows = computed(()=> Object.keys(STATION_MAX).map(st => {
-      const count = crew.filter(c => c.station === st).length;
-      const max = STATION_MAX[st];
-      return { name: st, count, max, pct: Math.round(count / max * 100), state: count >= max ? '满编' : count > 0 ? '缺员' : '空缺' };
-    }));
-    const lowStaff = computed(()=> staffRows.value.filter(r => r.count < r.max));
-    const standbyCount = computed(()=> crew.filter(c => c.status === '休眠').length);
-    const fatigue = ref(46);
-    const SHIFTS = [
-      {name:'一班', time:'00:00-08:00'},
-      {name:'二班', time:'08:00-16:00'},
-      {name:'三班', time:'16:00-24:00'},
-    ];
-    const shiftInfo = computed(()=> SHIFTS.map(s => ({
-      name: s.name, time: s.time,
-      count: crew.filter(c => c.shift === s.name).length,
-      coverage: Math.round(crew.filter(c => c.shift === s.name && c.status === '在岗').length / 2 * 100)
-    })));
-    const selStaff = ref(0);
-    const selStaffObj = computed(()=> staffRows.value[selStaff.value] || staffRows.value[0]);
-    const staffLogs = computed(()=> log.value.filter(i => i.src === '调度'));
-    function selectStaff(i){ selStaff.value = i; beep(520,0.04,'square',0.02); }
-    function deployCrew(){
-      const st = selStaffObj.value;
-      const c = crew.find(m => m.status === '休眠');
-      if(!c){ pushLog('待命池无可用人员','warn','调度'); beep(140,0.2,'square',0.04); return; }
-      if(st.count >= st.max){ pushLog(`「${st.name}」已满编`,'info','调度'); return; }
-      c.status = '在岗'; c.station = st.name; c.shift = '一班';
-      pushLog(`「${st.name}」补员完成 · 待命池剩余 ${standbyCount.value} 人`,'cmd','调度');
-      beep(640,0.06,'square',0.03);
-    }
-    function rotateShifts(){
-      const order = ['一班','二班','三班'];
-      crew.forEach(c => { c.shift = order[(order.indexOf(c.shift) + 1) % 3]; });
-      pushLog('轮班表已轮换：一班→二班 · 二班→三班 · 三班→一班','cmd','调度');
-      beep(640,0.06,'sine',0.04);
     }
     function barCls(v){ return v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'crit'; }
 
@@ -2372,7 +2172,6 @@ const __app = createApp({
       life.temp += lifeSystems.thermo ? (21.5 - life.temp) * 0.02 : (Math.random() - 0.5) * 0.2;
       life.pressure += (101.3 - life.pressure) * 0.01;
       life.humidity += lifeSystems.hydro ? (45 - life.humidity) * 0.02 : (Math.random() - 0.5) * 0.5;
-      zones.forEach(z => { z.temp += (Math.random() - 0.5) * 0.1; z.o2 = Math.min(100, Math.max(0, life.o2 + (Math.random() - 0.5) * 1.2)); });
       /* 动力漂移 */
       power.reactor = Math.max(40, Math.min(100, power.reactor + (Math.random() - 0.5) * 0.6));
       /* 物资消耗 */
@@ -2390,8 +2189,6 @@ const __app = createApp({
       channels.forEach(c => { c.sig = Math.max(5, Math.min(100, c.sig + (Math.random() - 0.5) * 2)); });
       /* 科研档案缓慢增长 */
       sensor.backlog = Math.min(100, sensor.backlog + 0.03);
-      /* 疲劳指数漂移 */
-      fatigue.value = Math.max(20, Math.min(90, fatigue.value + (Math.random() - 0.5) * 0.8));
       ti = (ti+1) % tickPool.length; tickerText.value = tickPool[ti];
     }
 
@@ -2467,11 +2264,7 @@ const __app = createApp({
       engineIgnite, flameOpacity,
       view, viewButtons, setView, keysHint,
       life, lifeSystems, lifeSysButtons, toggleLifeSystem,
-      zones, selZone, selZoneObj, setZone,
-      lifeEms, lifeEmsButtons, toggleLifeEms, lifeTip, lifeLogs,
-      crew, staffRows, lowStaff, standbyCount, fatigue,
-      selStaff, selStaffObj, selectStaff, deployCrew, staffLogs,
-      shiftInfo, rotateShifts, barCls,
+      lifeEms, lifeEmsButtons, toggleLifeEms, lifeTip, barCls,
       power, powerBranches, powerTotal, loadState, setBranch, toggleEmergency, powerLogs,
       cargo, selCargo, selCargoObj, selectCargo, cargoEta, lowCargo,
       requestSupply, rationing, toggleRationing, cargoLogs,
