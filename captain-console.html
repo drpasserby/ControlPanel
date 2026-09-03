@@ -59,8 +59,19 @@
   .shell.mode-alert{--acc:#d9a441}
   .shell.mode-combat{--acc:#e0564f}
   .main{
-    position:relative;min-height:0;overflow:hidden;
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;
   }
+  .subnav{flex:none;display:flex;gap:6px;padding:0 2px 8px;overflow-x:auto}
+  .subnav button{
+    background:transparent;border:1px solid var(--line2);color:var(--dim2);
+    font-family:'Noto Sans SC',sans-serif;font-size:11px;letter-spacing:.14em;
+    padding:3px 12px;cursor:pointer;transition:all .15s;white-space:nowrap;
+  }
+  .subnav button em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);margin-left:4px;letter-spacing:.12em}
+  .subnav button:hover{color:var(--text);border-color:var(--dim2);background:rgba(148,168,190,.05)}
+  .subnav button.on{color:#04060a;background:var(--acc);border-color:var(--acc)}
+  .subnav button.on em{color:rgba(4,6,10,.7)}
+  .viewarea{flex:1;min-height:0;position:relative}
   .viewgrid{
     position:absolute;inset:0;
     display:grid;
@@ -475,6 +486,7 @@
   /* ---------- 窄屏降级：三栏纵向堆叠（命令板块排最后，避免日志撑高影响航行） ---------- */
   @media (max-width: 1000px){
     .shell{grid-template-rows:auto 1fr auto}
+    .subnav{flex-wrap:wrap;overflow-x:visible}
     .viewgrid{grid-template-columns:1fr;overflow-y:auto;padding-bottom:8px}
     .panel{min-height:460px}
     .wpn{order:2}
@@ -528,8 +540,8 @@
     </div>
     <div class="top-center">
       <div class="view-switch">
-        <button v-for="v in viewButtons" :key="v.key" :class="{on:view===v.key}" @click="setView(v.key)">
-          {{ v.cn }}<em>{{ v.en }}</em>
+        <button v-for="d in domainButtons" :key="d.key" :class="{on:domain.key===d.key}" @click="setDomain(d.key)">
+          {{ d.cn }}<em>{{ d.en }}</em>
         </button>
       </div>
     </div>
@@ -548,6 +560,15 @@
 
   <!-- 主体 -->
   <main class="main">
+
+    <!-- 二级子系统导航 -->
+    <div class="subnav" v-if="subViews.length > 1">
+      <button v-for="v in subViews" :key="v.key" :class="{on:view===v.key}" @click="setView(v.key)">
+        {{ v.cn }}<em>{{ v.en }}</em>
+      </button>
+    </div>
+
+    <div class="viewarea">
 
     <!-- ============ 视图：作战 ============ -->
     <div class="viewgrid" v-show="view==='combat'">
@@ -1184,6 +1205,7 @@
         </div>
       </section>
 
+    </div>
     </div>
   </main>
 
@@ -1859,18 +1881,25 @@ const __app = createApp({
       {key:'nav',     label:'导航',   on:true},
     ]);
 
-    /* ================= 视图切换（舰桥多视图） ================= */
+    /* ================= 视图切换（三域：作战 / 舰船 / 情报） ================= */
     const view = ref('combat');
+    const DOMAINS = [
+      {key:'ops',   cn:'作战', en:'OPS',   views:['combat']},
+      {key:'ship',  cn:'舰船', en:'SHIP',  views:['power','hull','cargo','med']},
+      {key:'intel', cn:'情报', en:'INTEL', views:['comms','sensor']},
+    ];
+    const domainButtons = DOMAINS;
     const VIEWS = [
-      {key:'combat', cn:'作战', en:'COMBAT', p1:'航行', p2:'命令', p3:'武器'},
-      {key:'cargo',  cn:'物资', en:'CARGO',  p1:'库存', p2:'详情·日志', p3:'维生'},
+      {key:'combat', cn:'作战', en:'OPS',    p1:'航行', p2:'命令', p3:'武器'},
       {key:'power',  cn:'动力', en:'POWER',  p1:'输出', p2:'负载', p3:'事件'},
       {key:'hull',   cn:'损管', en:'HULL',   p1:'剖面', p2:'抢修', p3:'日志'},
+      {key:'cargo',  cn:'物资', en:'CARGO',  p1:'库存', p2:'详情·日志', p3:'维生'},
       {key:'med',    cn:'医疗', en:'MED',    p1:'指标', p2:'资源', p3:'记录'},
       {key:'comms',  cn:'通信', en:'COMMS',  p1:'频道', p2:'破译', p3:'情报'},
       {key:'sensor', cn:'科研', en:'SENSOR', p1:'观测', p2:'异常', p3:'档案'},
     ];
-    const viewButtons = VIEWS;
+    const domain = computed(()=> DOMAINS.find(d => d.views.includes(view.value)) || DOMAINS[0]);
+    const subViews = computed(()=> domain.value.views.map(k => VIEWS.find(v => v.key === k)));
     function setView(k){
       if(view.value === k) return;
       view.value = k;
@@ -1879,9 +1908,21 @@ const __app = createApp({
       pushLog(`切换至「${vn}」控制台`,'info','系统');
       beep(520,0.05,'square',0.03);
     }
+    function setDomain(key){
+      const d = DOMAINS.find(x => x.key === key);
+      if(!d || d.views.includes(view.value)) return;
+      setView(d.views[0]);
+    }
+    function moveSub(dir){
+      const arr = domain.value.views;
+      if(arr.length <= 1) return;
+      const i = arr.indexOf(view.value);
+      setView(arr[(i + dir + arr.length) % arr.length]);
+    }
     const keysHint = computed(()=> {
       const v = VIEWS.find(x => x.key === view.value);
-      return v ? `1 ${v.p1}  2 ${v.p2}  3 ${v.p3}` + (view.value === 'combat' ? '  空格 开火' : '') : '';
+      const s = v ? `1 ${v.p1}  2 ${v.p2}  3 ${v.p3}` + (view.value === 'combat' ? '  空格 开火' : '') : '';
+      return (domain.value.views.length > 1 ? 'Q/E 切换子系统 · ' : '') + s;
     });
 
     /* ================= 维生系统 ================= */
@@ -2202,6 +2243,8 @@ const __app = createApp({
       if(e.key === '1')      focus.value = f1;
       else if(e.key === '2') focus.value = f2;
       else if(e.key === '3') focus.value = f3;
+      else if(e.key === 'q' || e.key === 'Q') moveSub(-1);
+      else if(e.key === 'e' || e.key === 'E') moveSub(1);
       else if(e.key === ' '){ e.preventDefault(); if(vk === 'combat') fireWeapon(); }
     }
 
@@ -2262,7 +2305,7 @@ const __app = createApp({
       autoMode, toggleAuto,
       orders, cmdButtons, toggleOrder, alarm,
       engineIgnite, flameOpacity,
-      view, viewButtons, setView, keysHint,
+      view, domain, domainButtons, subViews, setDomain, setView, moveSub, keysHint,
       life, lifeSystems, lifeSysButtons, toggleLifeSystem,
       lifeEms, lifeEmsButtons, toggleLifeEms, lifeTip, barCls,
       power, powerBranches, powerTotal, loadState, setBranch, toggleEmergency, powerLogs,
