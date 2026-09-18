@@ -1,0 +1,2552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>星舰 · 舰长控制台 / STARSHIP · CAPTAIN CONSOLE</title>
+<!--
+  技术说明 / TECH STACK
+  · 框架：Vue 3（CDN 全局构建，单文件即可运行）
+  · 动效：原生 Canvas 2D（星海航行 / 战术雷达） + CSS 动画
+  · 音效：WebAudio API（可开关）
+  · 字体：Share Tech Mono（西文/数字） + Noto Sans SC（中文），离线时自动回退系统字体
+  · 风格参考：SpaceX Dragon 座舱 UI（克制的单色 + 数据密度）、流浪地球2 MOSS 终端（深色底 + 琥珀/青色点缀、双语标签）
+-->
+<style>
+  :root{
+    --bg:#04060a;
+    --panel:#0a0e14;
+    --line:rgba(150,170,190,.14);
+    --line2:rgba(150,170,190,.07);
+    --text:#d6dde4;
+    --dim:#5f6b78;
+    --dim2:#7d8a97;
+    --acc:#6fc3c9;
+    --ok:#8fbf7a;
+    --warn:#d9a441;
+    --crit:#e0564f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Noto Sans SC','Microsoft YaHei','PingFang SC',sans-serif;
+    font-size:13px;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  [v-cloak]{display:none}
+  .mono{font-family:'Share Tech Mono','Consolas',monospace}
+
+  /* ---------- 全局微纹理：极淡扫描线与暗角 ---------- */
+  body::before{
+    content:'';position:fixed;inset:0;z-index:6;pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+  body::after{
+    content:'';position:fixed;inset:0;z-index:7;pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+
+  /* ---------- 外壳布局 ---------- */
+  .shell{
+    display:grid;grid-template-rows:46px minmax(0,1fr) 34px;gap:8px;
+    height:100vh;padding:8px;overflow:hidden;
+  }
+  .shell.mode-alert{--acc:#d9a441}
+  .shell.mode-combat{--acc:#e0564f}
+  .main{
+    display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  }
+  .subnav{flex:none;display:flex;gap:6px;padding:0 2px 8px;overflow-x:auto}
+  .subnav button{
+    background:transparent;border:1px solid var(--line2);color:var(--dim2);
+    font-family:'Noto Sans SC',sans-serif;font-size:11px;letter-spacing:.14em;
+    padding:3px 12px;cursor:pointer;transition:all .15s;white-space:nowrap;
+  }
+  .subnav button em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);margin-left:4px;letter-spacing:.12em}
+  .subnav button:hover{color:var(--text);border-color:var(--dim2);background:rgba(148,168,190,.05)}
+  .subnav button.on{color:#04060a;background:var(--acc);border-color:var(--acc)}
+  .subnav button.on em{color:rgba(4,6,10,.7)}
+  .viewarea{flex:1;min-height:0;position:relative}
+  .viewgrid{
+    position:absolute;inset:0;
+    display:grid;
+    grid-template-columns:minmax(300px,360px) minmax(340px,1fr) minmax(320px,380px);
+    grid-template-rows:minmax(0,1fr);
+    gap:8px;
+  }
+
+  /* ---------- 面板通用 ---------- */
+  .panel{
+    background:linear-gradient(180deg, rgba(148,168,190,.035), rgba(148,168,190,0) 42%), var(--panel);
+    border:1px solid var(--line);
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    height:100%;
+    position:relative;overflow:hidden;
+    transition:border-color .25s, box-shadow .25s;
+  }
+  .panel.focused{border-color:rgba(111,195,201,.38)}
+  .shell.fired .wpn{box-shadow:inset 0 0 70px rgba(224,86,79,.12)}
+  .corners{position:absolute;inset:0;pointer-events:none;z-index:2}
+  .corners i{position:absolute;width:11px;height:11px;border-color:rgba(111,195,201,.5);border-style:solid;border-width:0}
+  .corners i:nth-child(1){top:-1px;left:-1px;border-top-width:1px;border-left-width:1px}
+  .corners i:nth-child(2){top:-1px;right:-1px;border-top-width:1px;border-right-width:1px}
+  .corners i:nth-child(3){bottom:-1px;left:-1px;border-bottom-width:1px;border-left-width:1px}
+  .corners i:nth-child(4){bottom:-1px;right:-1px;border-bottom-width:1px;border-right-width:1px}
+
+  .ph{
+    display:flex;align-items:baseline;gap:8px;
+    padding:9px 12px 8px;
+    border-bottom:1px solid var(--line2);
+    flex:none;
+  }
+  .ph-idx{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--acc);letter-spacing:.1em}
+  .ph h2{font-size:13px;font-weight:500;letter-spacing:.24em}
+  .ph h2 em{font-family:'Share Tech Mono',monospace;font-size:9px;font-style:normal;color:var(--dim);letter-spacing:.28em;margin-left:6px}
+  .ph-line{flex:1;height:1px;background:linear-gradient(90deg,var(--line2),transparent);align-self:center}
+  .ph-state{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:.16em;color:var(--dim)}
+  .ph-state.on{color:var(--acc);text-shadow:0 0 8px rgba(111,195,201,.6)}
+  .mode-combat .ph-state{color:var(--crit);text-shadow:0 0 8px rgba(224,86,79,.6);animation:blink 1.2s step-end infinite}
+
+  .panel-body{flex:1;min-height:150px;position:relative}
+  .panel-foot{border-top:1px solid var(--line2);padding:8px 10px;flex:0 1 auto;min-height:0;overflow-y:auto}
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;
+    padding:0 12px;
+    border:1px solid var(--line);border-bottom-color:var(--line2);
+    background:linear-gradient(180deg, rgba(148,168,190,.04), transparent);
+  }
+  .top-center{display:flex;justify-content:center}
+  .view-switch{display:flex;border:1px solid var(--line)}
+  .view-switch button{
+    background:transparent;border:0;color:var(--dim2);
+    font-family:'Noto Sans SC',sans-serif;font-size:11px;letter-spacing:.12em;
+    padding:3px 10px;cursor:pointer;transition:all .2s;
+    border-right:1px solid var(--line2);
+  }
+  .view-switch button:last-child{border-right:0}
+  .view-switch button em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;letter-spacing:.18em;color:var(--dim);margin-top:2px}
+  .view-switch button:hover{color:var(--text);background:rgba(148,168,190,.06)}
+  .view-switch button.on{color:#04060a;background:var(--acc);font-weight:500}
+  .view-switch button.on em{color:rgba(4,6,10,.75)}
+  .mode-combat .topbar{border-color:rgba(224,86,79,.35)}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand-mark{
+    width:26px;height:26px;display:grid;place-items:center;
+    border:1px solid rgba(111,195,201,.6);color:var(--acc);
+    font-size:15px;transform:rotate(45deg);
+  }
+  .brand-mark b{transform:rotate(-45deg);font-weight:400}
+  .brand-name{font-size:15px;letter-spacing:.34em}
+  .brand-name span{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.3em;margin-left:8px}
+  .brand-sub{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.22em;margin-top:2px}
+  .alert-switch{display:flex;border:1px solid var(--line)}
+  .alert-switch button{
+    background:transparent;border:0;color:var(--dim2);
+    font-family:'Noto Sans SC',sans-serif;font-size:11px;letter-spacing:.2em;
+    padding:5px 16px;cursor:pointer;transition:all .2s;
+    border-right:1px solid var(--line2);
+  }
+  .alert-switch button:last-child{border-right:0}
+  .alert-switch button:hover{color:var(--text);background:rgba(148,168,190,.06)}
+  .alert-switch button.on{color:#04060a;background:var(--acc);font-weight:500}
+  .mode-alert .alert-switch button.on{background:var(--warn)}
+  .mode-combat .alert-switch button.on{background:var(--crit)}
+  .top-right{display:flex;align-items:center;gap:14px;justify-content:flex-end}
+  .led{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dim);letter-spacing:.12em}
+  .led b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
+  .led .dot{width:6px;height:6px;border-radius:50%;background:#3a4350}
+  .led .dot.blink{background:var(--acc);box-shadow:0 0 6px rgba(111,195,201,.9)}
+  .led.bad .dot{background:var(--crit);box-shadow:0 0 6px rgba(224,86,79,.8)}
+  .clock{text-align:right}
+  .clock-time{font-family:'Share Tech Mono',monospace;font-size:17px;letter-spacing:.08em;line-height:1.05;color:#e6ecf1}
+  .clock-date{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:.14em}
+  .icon-btn{
+    background:transparent;border:1px solid var(--line);color:var(--dim2);
+    width:26px;height:26px;cursor:pointer;font-size:12px;transition:all .2s;
+  }
+  .icon-btn:hover{color:var(--text);border-color:var(--dim2)}
+  .icon-btn.on{color:var(--acc);border-color:rgba(111,195,201,.5)}
+
+  /* ---------- 航行面板 ---------- */
+  .starfield{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .route-legend{
+    position:absolute;left:10px;bottom:8px;z-index:1;
+    display:flex;gap:12px;font-size:9px;color:var(--dim);letter-spacing:.14em;
+  }
+  .route-legend span{display:flex;align-items:center;gap:4px}
+  .lg{width:14px;height:1px;display:inline-block}
+  .lg-a{background:rgba(111,195,201,.7)}
+  .lg-b{background:#dfe8ef}
+  .lg-c{background:rgba(111,195,201,.95);box-shadow:0 0 4px rgba(111,195,201,.8)}
+
+  .telemetry{
+    display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line2);
+    border-bottom:1px solid var(--line2);
+  }
+  .tele-cell{background:var(--panel);padding:7px 10px}
+  .tele-label{font-size:9px;color:var(--dim);letter-spacing:.2em}
+  .tele-value{font-family:'Share Tech Mono',monospace;font-size:17px;color:#e6ecf1;margin-top:2px;font-variant-numeric:tabular-nums}
+  .tele-value small{font-size:10px;color:var(--dim2);margin-left:3px}
+  .tele-cell.warn .tele-value{color:var(--warn)}
+  .throttle-row{display:flex;align-items:center;gap:10px;padding:8px 10px}
+  .throttle-row label{font-size:10px;color:var(--dim);letter-spacing:.18em;white-space:nowrap}
+  .throttle-row input[type=range]{flex:1;accent-color:var(--acc);height:2px;cursor:pointer}
+  .throttle-row output{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--acc);min-width:34px;text-align:right}
+
+  /* ---------- 命令面板 ---------- */
+  .cmd-body{display:flex;flex-direction:column;padding:10px;gap:10px;overflow-y:auto;flex:1;min-height:0}
+  .mission{border:1px solid var(--line2);padding:9px 11px;flex:none}
+  .mission-head{margin-bottom:6px}
+  .mission-name{font-size:12px;letter-spacing:.14em}
+  .mission-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);margin-left:6px;letter-spacing:.2em}
+  .mission-desc{font-size:11px;color:var(--dim2);line-height:1.6}
+  .alert-block{flex:none;border:1px solid var(--line2);padding:8px 10px}
+  .alert-label{font-size:9px;color:var(--dim);letter-spacing:.24em;margin-bottom:6px}
+  .cmd-body .alert-switch{border:0}
+  .cmd-body .alert-switch button{flex:1;padding:8px 0;font-size:11px}
+
+  .ship-wrap{display:flex;justify-content:center;padding:2px 0 6px;flex:none}
+  .ship{width:180px;height:90px}
+  .shield-ring{animation:spin 7s linear infinite;transform-origin:70px 35px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* 引擎点火：尾焰受控 + 点火闪光 */
+  .ship .flame{transition:opacity .35s}
+  .ship.engines .flame{animation:engineflicker .22s ease-in-out infinite alternate}
+  @keyframes engineflicker{from{opacity:.55}to{opacity:1}}
+  .ship.ignite{animation:shipignite 1.4s ease-out}
+  @keyframes shipignite{0%{filter:brightness(3) drop-shadow(0 0 12px rgba(111,195,201,.9))}100%{filter:brightness(1) drop-shadow(0 0 0 rgba(111,195,201,0))}}
+  /* 跃迁：充能光环脉冲 + 就绪强光 + 执行闪光 */
+  .warp-aura{transform-origin:70px 35px;animation:aurapulse 1.2s ease-in-out infinite}
+  @keyframes aurapulse{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.85;transform:scale(1.15)}}
+  .ship.charging{animation:shipshimmer 1.1s ease-in-out infinite}
+  @keyframes shipshimmer{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+  .ship.warpready{filter:drop-shadow(0 0 8px rgba(111,195,201,.75))}
+  .ship.warpready .warp-aura{animation:aurapulse .5s ease-in-out infinite}
+  .ship.warping{animation:warpfade 2.5s ease-out}
+  @keyframes warpfade{0%{filter:brightness(3) drop-shadow(0 0 14px rgba(170,215,255,.9))}100%{filter:brightness(1) drop-shadow(0 0 0 rgba(170,215,255,0))}}
+  /* 电子静默：隐形半透明 + 间歇闪烁 */
+  .ship.stealth{opacity:.5;filter:saturate(.55);animation:stealthflicker 3.2s steps(1,end) infinite}
+  @keyframes stealthflicker{0%,90%{opacity:.5}91%{opacity:.34}92%{opacity:.5}93%{opacity:.3}94%{opacity:.5}100%{opacity:.5}}
+
+  .orders{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}
+  .cmd-btn{
+    padding:9px 6px;text-align:center;cursor:pointer;
+    background:rgba(111,195,201,.04);border:1px solid rgba(111,195,201,.28);
+    color:var(--dim2);transition:all .18s;
+  }
+  .cmd-btn em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;letter-spacing:.2em;color:var(--dim);margin-top:3px}
+  .cmd-btn:hover{background:rgba(111,195,201,.12);color:var(--text)}
+  .cmd-btn.on{background:rgba(111,195,201,.18);color:#e6f6f7;border-color:var(--acc);box-shadow:inset 0 0 14px rgba(111,195,201,.12)}
+  .cmd-btn.on em{color:var(--acc)}
+  .cmd-btn.danger{grid-column:1/-1;border-color:rgba(224,86,79,.4);background:rgba(224,86,79,.05)}
+  .cmd-btn.danger:hover{background:rgba(224,86,79,.14);color:#ffd9d6}
+  .cmd-btn.danger em{color:#a4685f}
+  .cmd-btn.warpcharge{border-color:var(--warn);color:#e8c97e;animation:warppulse 1s ease-in-out infinite}
+  .cmd-btn.warpcharge em{color:var(--warn)}
+  .cmd-btn.warpready{border-color:var(--acc);background:rgba(111,195,201,.2);color:#e6f6f7;box-shadow:inset 0 0 14px rgba(111,195,201,.2)}
+  .cmd-btn.warpready em{color:var(--acc)}
+  @keyframes warppulse{50%{box-shadow:inset 0 0 18px rgba(217,164,65,.3)}}
+
+  .ai-line{
+    flex:none;display:flex;gap:8px;align-items:flex-start;
+    border:1px solid var(--line2);padding:7px 10px;background:rgba(148,168,190,.03);
+  }
+  .ai-tag{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--acc);letter-spacing:.14em;white-space:nowrap;padding-top:2px}
+  .ai-text{font-size:11px;color:var(--dim2);line-height:1.6;min-height:17px}
+  .ai-text::after{content:'▌';color:var(--acc);animation:blink 1s step-end infinite;margin-left:2px}
+  @keyframes blink{50%{opacity:0}}
+
+  .log-box{flex:1;min-height:0;display:flex;flex-direction:column}
+  .log-title{font-size:9px;color:var(--dim);letter-spacing:.24em;padding:2px 0 6px;flex:none}
+  .log-feed{flex:1;min-height:56px;overflow-y:auto;border:1px solid var(--line2);background:rgba(0,0,0,.25);padding:6px 8px}
+  .log-item{
+    display:flex;gap:8px;font-family:'Share Tech Mono',monospace;font-size:10px;
+    padding:3px 0;border-left:2px solid transparent;padding-left:6px;line-height:1.5;
+    animation:fadein .3s;
+  }
+  @keyframes fadein{from{opacity:0;transform:translateY(-3px)}to{opacity:1}}
+  .log-item .lt{color:var(--dim);flex:none}
+  .log-item .ls{color:var(--dim2);flex:none;min-width:30px}
+  .log-item .lm{color:var(--dim2)}
+  .log-item.t-ok{border-color:var(--acc)}
+  .log-item.t-ok .lm{color:#a9d4d6}
+  .log-item.t-warn{border-color:var(--warn)}
+  .log-item.t-warn .lm{color:#d8b26a}
+  .log-item.t-crit{border-color:var(--crit)}
+  .log-item.t-crit .lm{color:#e08a84}
+  .log-item.t-cmd .lm{color:#dfe8ef}
+  .log-item.t-info .lm{color:var(--dim2)}
+
+  /* ---------- 武器面板 ---------- */
+  .wpn-body{display:flex;flex-direction:column;gap:8px;padding:10px;overflow-y:auto;flex:1;min-height:0}
+  .radar-wrap{position:relative;height:150px;flex:none;border:1px solid var(--line2);background:rgba(0,0,0,.25)}
+  .radar-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .radar-tag{position:absolute;top:6px;left:8px;font-size:9px;color:var(--dim);letter-spacing:.2em;z-index:1}
+  .radar-hint{position:absolute;bottom:6px;right:8px;font-size:9px;color:var(--dim);letter-spacing:.14em;z-index:1}
+
+  .target-row{display:flex;align-items:center;gap:10px;flex:none}
+  .target-info{flex:1}
+  .target-name{font-family:'Share Tech Mono',monospace;font-size:12px;color:#e6ecf1;letter-spacing:.1em}
+  .target-sub{font-size:9px;color:var(--dim);letter-spacing:.14em;margin-top:2px}
+  .lock-bar{height:3px;background:rgba(255,255,255,.06);margin-top:5px;position:relative}
+  .lock-bar i{display:block;height:100%;background:var(--warn);transition:width .1s linear;width:0}
+  .lock-bar i.full{background:var(--crit)}
+  .target-btn{
+    padding:7px 12px;background:transparent;border:1px solid var(--line);
+    color:var(--dim2);font-size:11px;letter-spacing:.18em;cursor:pointer;transition:all .2s;white-space:nowrap;
+  }
+  .target-btn:hover{color:var(--text);border-color:var(--dim2)}
+  .target-btn.on{color:var(--crit);border-color:rgba(224,86,79,.6);box-shadow:inset 0 0 12px rgba(224,86,79,.15)}
+
+  .weapon-list{display:flex;flex-direction:column;gap:1px;background:var(--line2);border:1px solid var(--line2);flex:none}
+  .weapon{
+    background:var(--panel);padding:7px 10px;cursor:pointer;transition:background .15s;
+    border-left:2px solid transparent;
+  }
+  .weapon:hover{background:rgba(148,168,190,.05)}
+  .weapon.sel{border-left-color:var(--acc);background:rgba(111,195,201,.06)}
+  .w-row1{display:flex;align-items:baseline;gap:8px}
+  .w-cn{font-size:12px;letter-spacing:.08em}
+  .w-en{font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim);letter-spacing:.2em;flex:1}
+  .w-kind{font-family:'Share Tech Mono',monospace;font-size:9px;color:var(--dim2);border:1px solid var(--line2);padding:0 4px}
+  .w-ammo{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim2)}
+  .w-charge{height:3px;background:rgba(255,255,255,.06);margin-top:6px;position:relative}
+  .w-charge i{display:block;height:100%;background:var(--acc);transition:width .1s linear}
+  .w-charge i.cooling{background:var(--warn)}
+  .w-charge i.hot{background:var(--warn)}
+  .w-charge i.full{background:var(--ok);box-shadow:0 0 6px rgba(143,191,122,.8)}
+  .w-charge span{position:absolute;right:0;top:-13px;font-family:'Share Tech Mono',monospace;font-size:8px;color:var(--dim)}
+
+  .fire-control{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;flex:none;margin-top:2px}
+  .fire-btn.smart{grid-column:1/-1;border-color:rgba(111,195,201,.4);color:var(--acc)}
+  .fire-btn.smart:hover{background:rgba(111,195,201,.12);color:#e6f6f7}
+  .fire-btn.smart.on{background:rgba(111,195,201,.18);border-color:var(--acc);color:#e6f6f7;box-shadow:inset 0 0 12px rgba(111,195,201,.15)}
+  .fire-btn.auto{border-color:rgba(217,164,65,.45);color:#d8b26a}
+  .fire-btn.auto:hover{background:rgba(217,164,65,.12);color:#e8c97e}
+  .fire-btn.auto.on{background:rgba(217,164,65,.2);border-color:var(--warn);color:#e8c97e;box-shadow:inset 0 0 12px rgba(217,164,65,.15)}
+  .fire-btn{
+    padding:9px 6px;text-align:center;cursor:pointer;font-size:12px;letter-spacing:.2em;
+    background:rgba(148,168,190,.05);border:1px solid var(--line);color:var(--dim2);
+    transition:all .18s;font-family:'Noto Sans SC',sans-serif;
+  }
+  .fire-btn em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);letter-spacing:.18em;margin-top:2px}
+  .fire-btn:hover{color:var(--text);border-color:var(--dim2)}
+  .fire-btn.charge.on{background:rgba(217,164,65,.16);border-color:rgba(217,164,65,.6);color:#e8c97e}
+  .fire-btn.shoot{border-color:rgba(224,86,79,.45);color:#cf7c75}
+  .fire-btn.shoot:hover{background:rgba(224,86,79,.16);color:#ffd9d6}
+  .fire-btn:disabled{opacity:.35;cursor:not-allowed}
+
+  /* ---------- 岗位/详情卡片 ---------- */
+  .crew-card{border:1px solid var(--line2);padding:10px 12px;flex:none}
+  .cc-name{font-size:15px;letter-spacing:.18em;color:#e6ecf1}
+  .cc-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:9px;color:var(--dim);margin-left:8px;letter-spacing:.2em}
+  .cc-sub{font-size:10px;color:var(--dim2);letter-spacing:.14em;margin-top:4px}
+
+  .stat-bars{display:flex;flex-direction:column;gap:8px;flex:none}
+  .stat label{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);letter-spacing:.16em;margin-bottom:3px}
+  .stat label b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
+  .stat .bar{height:5px;background:rgba(255,255,255,.07)}
+  .stat .bar i{display:block;height:100%;background:var(--acc);transition:width .3s}
+  .stat .bar i.ok{background:var(--ok)}
+  .stat .bar i.warn{background:var(--warn)}
+  .stat .bar i.crit{background:var(--crit)}
+
+  .shift-box{flex:none;border-top:1px solid var(--line2)}
+  .shift-row{display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line2);font-size:10px}
+  .sr-name{color:#e6ecf1;letter-spacing:.14em;min-width:44px}
+  .sr-time{font-family:'Share Tech Mono',monospace;color:var(--dim);flex:1;letter-spacing:.1em}
+  .shift-row b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--acc)}
+
+  /* ---------- 通用系统行（岗位/物资/通信/科研共用） ---------- */
+  .srow{display:flex;align-items:center;gap:10px;padding:7px 10px;border-left:2px solid transparent;cursor:pointer;transition:background .15s;flex:none}
+  .srow:hover{background:rgba(148,168,190,.05)}
+  .srow.sel{border-left-color:var(--acc);background:rgba(111,195,201,.07)}
+  .srow .sn{font-size:11px;letter-spacing:.1em;min-width:56px;color:#e6ecf1}
+  .srow .sm{flex:1;font-size:9px;color:var(--dim);letter-spacing:.1em}
+  .srow .sb{width:90px;height:4px;background:rgba(255,255,255,.07);flex:none}
+  .srow .sb i{display:block;height:100%;background:var(--acc);transition:width .3s}
+  .srow .sb i.ok{background:var(--ok)}
+  .srow .sb i.warn{background:var(--warn)}
+  .srow .sb i.crit{background:var(--crit)}
+  .srow .sv{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--dim2);min-width:34px;text-align:right}
+  .srow .sv.warn{color:var(--warn)}
+
+  .pwr-list{display:flex;flex-direction:column;gap:2px;flex:none}
+  .pwr-row{display:flex;align-items:center;gap:10px;padding:5px 2px}
+  .pr-name{font-size:11px;letter-spacing:.1em;min-width:52px}
+  .pwr-row input[type=range]{flex:1;accent-color:var(--acc);height:2px;cursor:pointer}
+  .pr-val{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--acc);min-width:38px;text-align:right}
+
+  .hull-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}
+  .hull-cell{border:1px solid var(--line2);padding:6px 8px;cursor:pointer;transition:all .15s}
+  .hull-cell:hover{background:rgba(148,168,190,.05)}
+  .hull-cell.sel{border-color:var(--acc);background:rgba(111,195,201,.07)}
+  .hull-cell .hc-name{font-size:10px;color:var(--dim2);letter-spacing:.1em}
+  .hull-cell .hc-val{font-family:'Share Tech Mono',monospace;font-size:13px;margin-top:2px}
+  .hull-cell .hc-val.ok{color:var(--ok)}
+  .hull-cell .hc-val.warn{color:var(--warn)}
+  .hull-cell .hc-val.crit{color:var(--crit)}
+
+  .scanbar{height:6px;background:rgba(255,255,255,.07);position:relative;margin:6px 0;flex:none}
+  .scanbar i{display:block;height:100%;background:var(--acc);transition:width .25s}
+
+  .msg-box{display:flex;flex-direction:column;gap:4px;flex:none}
+  .msg{font-size:10px;color:var(--dim2);border:1px solid var(--line2);padding:5px 8px;letter-spacing:.05em}
+
+  /* ---------- 航行 · 目的地 + 星图入口 ---------- */
+  .routebar{display:flex;align-items:center;gap:10px;border-top:1px solid var(--line2);padding:7px 2px 2px}
+  .routebar-info{flex:1;min-width:0}
+  .routebar-label{font-size:8px;color:var(--dim);letter-spacing:.22em}
+  .routebar-name{font-size:13px;letter-spacing:.1em;color:#e6ecf1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .routebar-name em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);margin-left:6px;letter-spacing:.18em}
+  .routebar-meta{font-size:9px;color:var(--dim);letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-btn{
+    flex:none;background:transparent;border:1px solid rgba(111,195,201,.5);color:var(--acc);
+    font-size:12px;letter-spacing:.18em;padding:8px 10px;cursor:pointer;transition:all .2s;
+  }
+  .chart-btn em{display:block;font-family:'Share Tech Mono',monospace;font-style:normal;font-size:8px;color:var(--dim);letter-spacing:.16em;margin-top:2px}
+  .chart-btn:hover{background:rgba(111,195,201,.14);color:#e6f6f7}
+
+  /* ---------- 星图弹层 ---------- */
+  .chart-modal{position:fixed;inset:0;z-index:55;background:rgba(2,4,7,.9);display:flex;align-items:center;justify-content:center;padding:20px}
+  .chart-box{
+    width:min(1500px,96vw);height:min(920px,94vh);
+    display:flex;flex-direction:column;
+    background:linear-gradient(180deg,rgba(148,168,190,.04),transparent),#070b10;
+    border:1px solid var(--line);
+  }
+  .chart-head{flex:none;display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
+  .chart-title{font-size:14px;letter-spacing:.3em;color:#e6ecf1}
+  .chart-title em{font-family:'Share Tech Mono',monospace;font-style:normal;font-size:9px;color:var(--acc);margin-left:8px;letter-spacing:.2em}
+  .chart-dest{flex:1;font-size:11px;color:var(--dim2);letter-spacing:.1em;display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+  .chart-close{flex:none;background:transparent;border:1px solid var(--line);color:var(--dim2);font-size:11px;letter-spacing:.1em;padding:5px 12px;cursor:pointer;transition:all .2s}
+  .chart-close:hover{color:var(--crit);border-color:rgba(224,86,79,.6)}
+  .chart-body{flex:1;display:grid;grid-template-columns:1fr 264px;min-height:0}
+  .chart-stage{position:relative;overflow:hidden}
+  .chart-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .pt{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:2}
+  .pt .pt-ico{position:absolute;left:-3px;top:-3px;width:6px;height:6px}
+  .pt.ok .pt-ico{left:-2.5px;top:-2.5px;width:5px;height:5px;background:rgba(111,195,201,.9);box-shadow:0 0 5px rgba(111,195,201,.6);transform:rotate(45deg)}
+  .pt.no .pt-ico{width:9px;height:9px;left:-4.5px;top:-4.5px;border:1px solid rgba(224,86,79,.7);border-radius:50%;background:none}
+  .pt .pt-lb{position:absolute;top:-6px;left:8px;white-space:nowrap;font-size:10px;color:rgba(196,214,224,.78);letter-spacing:.06em;pointer-events:none;text-shadow:0 0 5px #04070a}
+  .pt.no .pt-lb{color:rgba(224,86,79,.6)}
+  .pt.L .pt-lb{left:auto;right:8px}
+  .pt.sel .pt-lb{color:#e6f6f7}
+  .pt.dest::after{content:'';position:absolute;left:-10px;top:-10px;width:20px;height:20px;border:1px solid rgba(111,195,201,.85);border-radius:50%;animation:destpulse 2s ease-in-out infinite}
+  @keyframes destpulse{0%,100%{opacity:.9}50%{opacity:.3}}
+  .pt:hover .pt-ico{filter:brightness(1.6)}
+
+  .chart-info{border-left:1px solid var(--line);padding:14px 16px;display:flex;flex-direction:column;gap:6px;overflow-y:auto}
+  .ci-label{font-size:9px;color:var(--dim);letter-spacing:.22em}
+  .ci-name{font-size:18px;letter-spacing:.12em;color:#e6ecf1}
+  .ci-en{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--acc);letter-spacing:.14em}
+  .ci-row{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:4px 0;border-bottom:1px solid var(--line2)}
+  .ci-row b{color:var(--dim2);font-weight:400;font-family:'Share Tech Mono',monospace}
+  .ci-row b.ok{color:var(--ok)}
+  .ci-row b.bad{color:var(--crit)}
+  .ci-note{font-size:11px;color:var(--dim2);line-height:1.6;padding:6px 0;border-bottom:1px solid var(--line2)}
+  .ci-hint{font-size:9px;color:var(--dim);letter-spacing:.06em;line-height:1.7;margin-top:auto}
+  .chart-set{margin-top:6px;padding:10px;background:transparent;border:1px solid rgba(111,195,201,.5);color:var(--acc);font-size:12px;letter-spacing:.16em;cursor:pointer;transition:all .2s}
+  .chart-set:disabled{opacity:.4;cursor:not-allowed}
+  .chart-set:hover:not(:disabled){background:rgba(111,195,201,.14);color:#e6f6f7}
+  .chart-set.ghost{border-color:var(--line);color:var(--dim2)}
+  .chart-set.ghost:hover{color:var(--text);border-color:var(--dim2);background:rgba(148,168,190,.06)}
+
+  /* ---------- 底栏 ---------- */
+  .bottombar{
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;
+    padding:0 12px;border:1px solid var(--line);border-top-color:var(--line2);
+    background:linear-gradient(180deg, rgba(148,168,190,.03), transparent);
+    font-size:9px;color:var(--dim);letter-spacing:.14em;
+  }
+  .keys{font-size:9px;color:var(--dim);letter-spacing:.14em;white-space:nowrap}
+  .ticker{overflow:hidden;white-space:nowrap}
+  .ticker span{display:flex;animation:marq 28s linear infinite}
+  .ticker i{font-style:normal;white-space:nowrap;margin-right:56px}
+  .ticker i::before{content:'●';color:var(--acc);margin-right:10px;font-size:6px;vertical-align:middle}
+  @keyframes marq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .globals{display:flex;gap:14px;align-items:center}
+  .gbar{display:flex;flex-direction:column;gap:3px;min-width:74px}
+  .gbar label{font-size:8px;color:var(--dim);letter-spacing:.16em;display:flex;justify-content:space-between}
+  .gbar label b{font-family:'Share Tech Mono',monospace;font-weight:400;color:var(--dim2)}
+  .gbar .bar{height:3px;background:rgba(255,255,255,.07)}
+  .gbar .bar i{display:block;height:100%;background:var(--acc);transition:width .3s}
+  .gbar.warn .bar i{background:var(--warn)}
+  .gbar.crit .bar i{background:var(--crit)}
+
+  /* ---------- 开机自检覆盖层 ---------- */
+  .boot{
+    position:fixed;inset:0;z-index:50;background:rgba(3,5,8,.985);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .boot-box{width:min(640px,88vw)}
+  .boot-logo{font-size:34px;color:var(--acc);margin-bottom:18px;letter-spacing:.2em}
+  .boot-logo span{font-size:12px;color:var(--dim);margin-left:12px;letter-spacing:.3em}
+  .boot-lines{
+    font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--acc);
+    line-height:1.9;min-height:220px;white-space:pre-wrap;letter-spacing:.06em;
+    text-shadow:0 0 10px rgba(111,195,201,.25);
+  }
+  .boot-hint{font-size:10px;color:var(--dim);letter-spacing:.3em;margin-top:16px;text-align:center;animation:blink 1.4s step-end infinite}
+  .bootfade-enter-active,.bootfade-leave-active{transition:opacity .6s ease}
+  .bootfade-enter-from,.bootfade-leave-to{opacity:0}
+
+  /* ---------- 星舰命名覆盖层 ---------- */
+  .naming{
+    position:fixed;inset:0;z-index:60;background:rgba(3,5,8,.985);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .naming-box{width:min(460px,88vw)}
+  .naming-title{font-size:20px;letter-spacing:.3em;color:#e6ecf1;margin-bottom:6px}
+  .naming-sub{font-size:10px;color:var(--dim);letter-spacing:.18em;margin-bottom:24px}
+  .naming-input{
+    width:100%;background:rgba(0,0,0,.35);border:1px solid var(--line);border-bottom:1px solid rgba(111,195,201,.55);
+    color:#e6ecf1;font-size:18px;letter-spacing:.22em;padding:11px 12px;outline:none;transition:border-color .2s;
+    font-family:'Noto Sans SC','Microsoft YaHei',sans-serif;
+  }
+  .naming-input:focus{border-color:var(--acc)}
+  .naming-preview{font-size:11px;color:var(--dim);letter-spacing:.14em;margin:12px 2px 0}
+  .naming-preview b{color:var(--acc);font-weight:400;letter-spacing:.2em}
+  .naming-btn{
+    width:100%;margin-top:16px;padding:12px;background:transparent;
+    border:1px solid rgba(111,195,201,.5);color:var(--acc);
+    font-size:13px;letter-spacing:.3em;cursor:pointer;transition:all .2s;
+  }
+  .naming-btn:hover{background:rgba(111,195,201,.12);color:#e6f6f7}
+  .naming-hint{font-size:9px;color:var(--dim);letter-spacing:.14em;text-align:center;margin-top:14px}
+
+  /* ---------- 跃迁闪光层 ---------- */
+  .warp-flash{
+    position:fixed;inset:0;z-index:40;pointer-events:none;
+    background:radial-gradient(80% 60% at 50% 50%, rgba(170,215,255,.55), rgba(111,195,201,.18) 45%, transparent 75%);
+    opacity:0;animation:warpflash 2.5s ease-out forwards;
+  }
+  @keyframes warpflash{0%{opacity:0}10%{opacity:1}100%{opacity:0}}
+
+  /* ---------- 窄屏降级：三栏纵向堆叠（命令板块排最后，避免日志撑高影响航行） ---------- */
+  @media (max-width: 1000px){
+    .shell{grid-template-rows:auto 1fr auto}
+    .subnav{flex-wrap:wrap;overflow-x:visible}
+    .viewgrid{grid-template-columns:1fr;overflow-y:auto;padding-bottom:8px}
+    .panel{min-height:460px}
+    .wpn{order:2}
+    .cmd{order:3}
+    .log-feed{max-height:200px}
+    .topbar{grid-template-columns:1fr;gap:6px;padding:8px 12px}
+    .top-center{justify-content:flex-start}
+    .top-right{justify-content:space-between}
+  }
+</style>
+</head>
+<body>
+<div id="app" v-cloak>
+  <!-- 模板根：外壳层（class 绑定由 Vue 编译处理，不能写在容器上） -->
+  <div :class="['shell','mode-'+alertLevel, {fired: firing}]">
+
+  <!-- 星舰命名（首次登舰 / 右上角 ✎ 修改） -->
+  <transition name="bootfade">
+    <div class="naming" v-if="showNaming">
+      <div class="naming-box">
+        <div class="boot-logo">▣<span>SHIP REGISTRATION</span></div>
+        <div class="naming-title">为你的星舰命名</div>
+        <div class="naming-sub">首次登舰需完成舰名登记 · 将保存在本机 localStorage</div>
+        <input class="naming-input" v-model.trim="nameDraft" maxlength="12" placeholder="输入舰名" @keyup.enter="confirmName" autofocus>
+        <div class="naming-preview">预览 <b>{{ previewName }}</b></div>
+        <button class="naming-btn" @click="confirmName">确认命名 · CONFIRM</button>
+        <div class="naming-hint">已登记舰名可在右上角 ✎ 修改</div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- 开机自检 -->
+  <transition name="bootfade">
+    <div class="boot" v-if="!bootDone && !showNaming" @click="skipBoot">
+      <div class="boot-box">
+        <div class="boot-logo">▣<span>{{ enTag }} · SHIPBOARD COMPUTER v4.2</span></div>
+        <pre class="boot-lines">{{ bootText }}</pre>
+        <div class="boot-hint">点击任意位置跳过 · CLICK TO SKIP</div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><b>▣</b></div>
+      <div>
+        <div class="brand-name">{{ displayName }}<span>{{ enTag }}</span></div>
+        <div class="brand-sub">CNS-07 · 深空战术母舰 · DEEP SPACE VESSEL</div>
+      </div>
+    </div>
+    <div class="top-center">
+      <div class="view-switch">
+        <button v-for="d in domainButtons" :key="d.key" :class="{on:domain.key===d.key}" @click="setDomain(d.key)">
+          {{ d.cn }}<em>{{ d.en }}</em>
+        </button>
+      </div>
+    </div>
+    <div class="top-right">
+      <div class="led" v-for="s in sysLeds" :key="s.key" :class="{bad:!s.on}">
+        <i class="dot" :class="{blink:s.on}"></i>{{s.label}}<b>{{s.on?'在线':'离线'}}</b>
+      </div>
+      <div class="clock">
+        <div class="clock-time">{{ shipTime }}</div>
+        <div class="clock-date">{{ shipDate }} · UTC+8</div>
+      </div>
+      <button class="icon-btn" @click="openRename" title="舰名设置">✎</button>
+      <button class="icon-btn" :class="{on:sound}" @click="toggleSound" title="音效开关">♪</button>
+    </div>
+  </header>
+
+  <!-- 主体 -->
+  <main class="main">
+
+    <!-- 二级子系统导航 -->
+    <div class="subnav" v-if="subViews.length > 1">
+      <button v-for="v in subViews" :key="v.key" :class="{on:view===v.key}" @click="setView(v.key)">
+        {{ v.cn }}<em>{{ v.en }}</em>
+      </button>
+    </div>
+
+    <div class="viewarea">
+
+    <!-- ============ 视图：作战 ============ -->
+    <div class="viewgrid" v-show="view==='combat'">
+
+    <!-- ============ 01 航行 ============ -->
+    <section class="panel nav" :class="{focused:focus==='nav'}" @click="focus='nav'">
+      <i class="corners"><i></i><i></i><i></i><i></i></i>
+      <header class="ph">
+        <span class="ph-idx">01</span>
+        <h2>航行<em>NAVIGATION</em></h2>
+        <span class="ph-line"></span>
+        <span class="ph-state" :class="navStateCls">{{ navState }}</span>
+      </header>
+      <div class="panel-body">
+        <canvas ref="starCanvas" class="starfield"></canvas>
+        <div class="route-legend">
+          <span><i class="lg lg-a"></i>航路</span>
+          <span><i class="lg lg-b"></i>本舰</span>
+          <span><i class="lg lg-c"></i>目标</span>
+        </div>
+      </div>
+      <div class="panel-foot">
+        <div class="telemetry">
+          <div class="tele-cell"><div class="tele-label">航速 / VELOCITY</div><div class="tele-value">{{ speedKm }}<small>km/s</small></div></div>
+          <div class="tele-cell"><div class="tele-label">航向 / HEADING</div><div class="tele-value">{{ heading.toFixed(1) }}<small>°</small></div></div>
+          <div class="tele-cell warn"><div class="tele-label">燃料 / FUEL</div><div class="tele-value">{{ fuelPct.toFixed(1) }}<small>%</small></div></div>
+          <div class="tele-cell"><div class="tele-label">姿态稳定 / STABILITY</div><div class="tele-value">{{ stability.toFixed(1) }}<small>%</small></div></div>
+        </div>
+        <div class="throttle-row">
+          <label>推进功率 THRUST</label>
+          <input type="range" min="0" max="100" v-model.number="throttle">
+          <output>{{ throttle }}%</output>
+        </div>
+        <div class="routebar">
+          <div class="routebar-info">
+            <div class="routebar-label">航路目标 · DESTINATION</div>
+            <div class="routebar-name">{{ dest.name }}<em>{{ dest.en }}</em></div>
+            <div class="routebar-meta">{{ dest.dist }} AU · {{ dest.note }}</div>
+          </div>
+          <button class="chart-btn" @click="openChart">星图<em>STAR CHART</em></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 02 命令 ============ -->
+    <section class="panel cmd" :class="{focused:focus==='cmd'}" @click="focus='cmd'">
+      <i class="corners"><i></i><i></i><i></i><i></i></i>
+      <header class="ph">
+        <span class="ph-idx">02</span>
+        <h2>命令<em>COMMAND</em></h2>
+        <span class="ph-line"></span>
+        <span class="ph-state on">舰长在线</span>
+      </header>
+      <div class="cmd-body">
+
+        <div class="mission">
+          <div class="mission-head">
+            <div class="mission-name">深空侦察 · 任务 S-7<em>MISSION</em></div>
+          </div>
+          <div class="mission-desc">抵近观测目标天体 T-04，采集光谱与引力场数据后返航。</div>
+        </div>
+
+        <div class="alert-block">
+          <div class="alert-label">战备等级 · ALERT LEVEL</div>
+          <div class="alert-switch">
+            <button v-for="l in alertLevels" :key="l.key" :class="{on:alertLevel===l.key}" @click="setAlert(l.key)">{{l.label}}</button>
+          </div>
+        </div>
+
+        <div class="ship-wrap">
+          <svg class="ship" :class="{engines:orders.engines, ignite:engineIgnite, charging:orders.warp, warpready:warpReady, warping:warping, stealth:orders.stealth}" viewBox="0 0 140 70">
+            <defs>
+              <linearGradient id="flame" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#6fc3c9"/><stop offset="1" stop-color="rgba(111,195,201,0)"/>
+              </linearGradient>
+              <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stop-color="rgba(111,195,201,.5)"/>
+                <stop offset="1" stop-color="rgba(111,195,201,0)"/>
+              </radialGradient>
+            </defs>
+            <ellipse v-if="orders.warp || warpReady" class="warp-aura" cx="70" cy="35" rx="54" ry="29" fill="url(#aura)"/>
+            <circle v-if="orders.shield" class="shield-ring" cx="70" cy="35" r="30" fill="none" stroke="#6fc3c9" stroke-opacity=".5" stroke-dasharray="10 8"/>
+            <rect x="14" y="22" width="92" height="26" rx="13" fill="#141a22" stroke="#6fc3c9" stroke-opacity=".55"/>
+            <path d="M14 35 L6 26 L6 44 Z" fill="#141a22" stroke="#6fc3c9" stroke-opacity=".55"/>
+            <rect x="30" y="27" width="26" height="16" rx="3" fill="#0d1b20" stroke="#6fc3c9" stroke-opacity=".8"/>
+            <line x1="58" y1="35" x2="94" y2="35" stroke="#6fc3c9" stroke-opacity=".35"/>
+            <rect x="100" y="23" width="10" height="10" fill="#1a2430" stroke="#6fc3c9" stroke-opacity=".4"/>
+            <rect x="100" y="37" width="10" height="10" fill="#1a2430" stroke="#6fc3c9" stroke-opacity=".4"/>
+            <polygon class="flame" :style="{opacity: flameOpacity}" points="110,24 142,29 142,41 110,36" fill="url(#flame)"/>
+            <polygon class="flame" :style="{opacity: flameOpacity}" points="110,38 142,43 142,55 110,48" fill="url(#flame)"/>
+          </svg>
+        </div>
+
+        <div class="orders">
+          <button class="cmd-btn" v-for="b in cmdButtons" :key="b.key" :class="btnCls(b)" @click="btnClick(b)">
+            {{ btnLabel(b) }}<em>{{ btnEn(b) }}</em>
+          </button>
+          <button class="cmd-btn danger" @click="alarm">紧急警报<em>ALARM</em></button>
+        </div>
+
+        <div class="ai-line">
+          <span class="ai-tag">AI 副官</span>
+          <span class="ai-text">{{ aiText }}</span>
+        </div>
+
+        <div class="log-box">
+          <div class="log-title">指挥记录 · COMMAND LOG</div>
+          <div class="log-feed">
+            <div class="log-item" v-for="(item,i) in log" :key="i" :class="'t-'+item.type">
+              <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ 03 武器 ============ -->
+    <section class="panel wpn" :class="{focused:focus==='wpn'}" @click="focus='wpn'">
+      <i class="corners"><i></i><i></i><i></i><i></i></i>
+      <header class="ph">
+        <span class="ph-idx">03</span>
+        <h2>武器<em>WEAPONS</em></h2>
+        <span class="ph-line"></span>
+        <span class="ph-state" :class="selW.charge>=100?'on':''">{{ selW.charge>=100 ? '可开火' : '待命' }}</span>
+      </header>
+      <div class="wpn-body">
+
+        <div class="radar-wrap">
+          <canvas ref="radarCanvas"></canvas>
+          <div class="radar-tag">战术雷达 · TACTICAL</div>
+          <div class="radar-hint">RNG 40,000 km</div>
+        </div>
+
+        <div class="target-row">
+          <div class="target-info">
+            <div class="target-name">T-04 · 未知目标</div>
+            <div class="target-sub">相对速度 -2.3 km/s · 距离 31,400 km</div>
+            <div class="lock-bar"><i :class="{full:locked}" :style="{width: lockP+'%'}"></i></div>
+          </div>
+          <button class="target-btn" :class="{on:locked}" @click="toggleLock">{{ locked?'解除锁定':'锁定目标' }}</button>
+        </div>
+
+        <div class="weapon-list">
+          <div class="weapon" v-for="w in weapons" :key="w.id" :class="{sel:w.id===selW.id}" @click="selectWeapon(w.id)">
+            <div class="w-row1">
+              <span class="w-cn">{{ w.cn }}</span>
+              <span class="w-en">{{ w.en }}</span>
+              <span class="w-kind">{{ w.kind }}</span>
+              <span class="w-ammo">{{ w.ammo===Infinity ? '∞' : w.ammo+' / '+w.max }}</span>
+            </div>
+            <div class="w-charge">
+              <i :class="{cooling:w.cd>0, hot:w.charge>0&&w.charge<100, full:w.charge>=100}" :style="{width: w.charge+'%'}"></i>
+              <span>{{ w.cd>0 ? '冷却 '+(w.cd/1000).toFixed(1)+'s' : w.charge+'%' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="fire-control">
+          <button class="fire-btn charge" :class="{on:charging}" :disabled="autoMode!=='none'" @click="toggleCharge">
+            {{ charging?'充能中…':'充能' }}<em>CHARGE</em>
+          </button>
+          <button class="fire-btn shoot" :disabled="autoMode!=='none'" @click="fireWeapon()">开火<em>FIRE</em></button>
+          <button class="fire-btn auto" :class="{on:autoMode==='single'}" @click="toggleAuto('single')">
+            {{ autoMode==='single' ? '停止持续开火' : '持续开火' }}<em>HOLD FIRE</em>
+          </button>
+          <button class="fire-btn smart" :class="{on:autoMode==='all'}" @click="toggleAuto('all')">
+            {{ autoMode==='all' ? '停止智能作战' : '智能作战' }}<em>SMART COMBAT</em>
+          </button>
+        </div>
+
+      </div>
+    </section>
+    </div>
+
+    <!-- ============ 视图：动力 ============ -->
+    <div class="viewgrid" v-show="view==='power'">
+
+      <!-- P1 反应堆输出 -->
+      <section class="panel" :class="{focused:focus==='power1'}" @click="focus='power1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">P1</span>
+          <h2>反应堆输出<em>REACTOR OUTPUT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:power.reactor>90}">{{ power.reactor.toFixed(0) }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell"><div class="tele-label">反应堆输出</div><div class="tele-value">{{ power.reactor.toFixed(0) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">总分配</div><div class="tele-value">{{ powerTotal }}<small>pts</small></div></div>
+          </div>
+          <div class="pwr-list">
+            <div class="pwr-row" v-for="b in powerBranches" :key="b.key">
+              <span class="pr-name">{{ b.cn }}</span>
+              <input type="range" min="0" max="100" :value="power.branches[b.key]" @input="setBranch(b.key, $event.target.value)">
+              <span class="pr-val">{{ power.branches[b.key] }}%</span>
+            </div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" :class="{on:power.emergency}" @click="toggleEmergency">紧急动力<em>EMERGENCY POWER</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- P2 支路负载 -->
+      <section class="panel" :class="{focused:focus==='power2'}" @click="focus='power2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">P2</span>
+          <h2>支路负载<em>BRANCH LOAD</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:powerTotal>130}">{{ powerTotal>130 ? '过载' : '正常' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="b in powerBranches" :key="b.key">
+            <span class="sn">{{ b.cn }}</span>
+            <span class="sm">{{ loadState(b.key) }}</span>
+            <span class="sb"><i :class="barCls(100-Math.abs(50-power.branches[b.key]))" :style="{width:power.branches[b.key]+'%'}"></i></span>
+            <span class="sv">{{ power.branches[b.key] }}%</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">提示</span>
+            <span class="ai-text">{{ powerTotal > 130 ? '总分配过高，请削减非关键支路！' : '动力分配平衡，各系统运行正常。' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- P3 动力事件 -->
+      <section class="panel" :class="{focused:focus==='power3'}" @click="focus='power3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">P3</span>
+          <h2>动力事件<em>POWER LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:power.emergency}">紧急模式</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">动力日志 · POWER LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in powerLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：物资（含维生子板块） ============ -->
+    <div class="viewgrid" v-show="view==='cargo'">
+
+      <!-- G1 库存总览 -->
+      <section class="panel" :class="{focused:focus==='cargo1'}" @click="focus='cargo1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G1</span>
+          <h2>库存总览<em>CARGO</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:lowCargo.length>0}">{{ lowCargo.length>0 ? lowCargo.length+' 项告急' : '正常' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="(c,i) in cargo" :key="c.name" :class="{sel:selCargo===i}" @click="selectCargo(i)">
+            <span class="sn">{{ c.name }}</span>
+            <span class="sm">{{ c.en }}</span>
+            <span class="sb"><i :class="barCls(c.amount)" :style="{width:c.amount+'%'}"></i></span>
+            <span class="sv">{{ c.amount.toFixed(1) }}%</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">低库存</span>
+            <span class="ai-text">{{ lowCargo.length ? lowCargo.map(c=>c.name).join('、')+' 已低于 30%！' : '无低库存预警' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- G2 详情·补给·物资日志 -->
+      <section class="panel" :class="{focused:focus==='cargo2'}" @click="focus='cargo2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G2</span>
+          <h2>详情·补给·日志<em>DETAIL / SUPPLY</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:rationing}">配给中</span>
+        </header>
+        <div class="cmd-body">
+          <div class="crew-card">
+            <div class="cc-name">{{ selCargoObj.name }}<em>{{ selCargoObj.en }}</em></div>
+            <div class="cc-sub">消耗速率 {{ selCargoObj.rate.toFixed(3) }}/tick · 预计可维持 {{ cargoEta(selCargoObj) }} 天</div>
+          </div>
+          <div class="stat-bars">
+            <div class="stat"><label>库存 <b>{{ selCargoObj.amount.toFixed(1) }}%</b></label><div class="bar"><i :class="barCls(selCargoObj.amount)" :style="{width:selCargoObj.amount+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="requestSupply">补给请求<em>RESUPPLY</em></button>
+            <button class="cmd-btn" :class="{on:rationing}" @click="toggleRationing">紧急配给<em>RATIONING</em></button>
+          </div>
+          <div class="log-box">
+            <div class="log-title">物资日志 · CARGO LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in cargoLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- G3 维生子板块：维生总控 + 应急协议 -->
+      <section class="panel" :class="{focused:focus==='cargo3'}" @click="focus='cargo3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">G3</span>
+          <h2>维生·总控<em>LIFE SUPPORT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:life.o2<70}">{{ life.o2<70 ? '低氧警报' : '运行中' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell" :class="{warn:life.o2<70}"><div class="tele-label">氧气 / O₂</div><div class="tele-value">{{ life.o2.toFixed(1) }}<small>%</small></div></div>
+            <div class="tele-cell" :class="{warn:life.co2>0.08}"><div class="tele-label">CO₂</div><div class="tele-value">{{ life.co2.toFixed(3) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">舱压</div><div class="tele-value">{{ life.pressure.toFixed(1) }}<small>kPa</small></div></div>
+            <div class="tele-cell"><div class="tele-label">温度</div><div class="tele-value">{{ life.temp.toFixed(1) }}<small>°C</small></div></div>
+            <div class="tele-cell"><div class="tele-label">湿度</div><div class="tele-value">{{ life.humidity.toFixed(0) }}<small>%</small></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" v-for="s in lifeSysButtons" :key="s.key" :class="{on:lifeSystems[s.key]}" @click="toggleLifeSystem(s.key)">
+              {{ s.cn }}<em>{{ s.en }}</em>
+            </button>
+          </div>
+          <div class="log-title">应急协议 · EMERGENCY</div>
+          <div class="orders">
+            <button class="cmd-btn" v-for="e in lifeEmsButtons" :key="e.key" :class="{on:lifeEms[e.key]}" @click="toggleLifeEms(e.key)">
+              {{ e.cn }}<em>{{ e.en }}</em>
+            </button>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">维生</span>
+            <span class="ai-text">{{ lifeTip }}</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：损管 ============ -->
+    <div class="viewgrid" v-show="view==='hull'">
+
+      <!-- H1 舰体剖面 -->
+      <section class="panel" :class="{focused:focus==='hull1'}" @click="focus='hull1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">H1</span>
+          <h2>舰体剖面<em>HULL MAP</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:hullOverall<80}">完整度 {{ hullOverall }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="hull-grid">
+            <div class="hull-cell" v-for="(h,i) in hull" :key="h.name" :class="{sel:selHull===i}" @click="selectHull(i)">
+              <div class="hc-name">{{ h.name }}</div>
+              <div class="hc-val" :class="barCls(h.integrity)">{{ h.integrity }}%</div>
+            </div>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">整体</span>
+            <span class="ai-text">舰体完整度 {{ hullOverall }}% · 可用抢修小组 {{ repairTeams }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- H2 抢修详情 -->
+      <section class="panel" :class="{focused:focus==='hull2'}" @click="focus='hull2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">H2</span>
+          <h2>抢修详情<em>REPAIR</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">小组 ×{{ repairTeams }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="crew-card">
+            <div class="cc-name">{{ selHullObj.name }}</div>
+            <div class="cc-sub">结构完整度 {{ selHullObj.integrity }}% · 作战中可能随机受损</div>
+          </div>
+          <div class="stat-bars">
+            <div class="stat"><label>完整度 <b>{{ selHullObj.integrity }}%</b></label><div class="bar"><i :class="barCls(selHullObj.integrity)" :style="{width:selHullObj.integrity+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="deployRepair">部署抢修组<em>DEPLOY REPAIR</em></button>
+            <button class="cmd-btn" @click="recallRepair">召回抢修组<em>RECALL</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- H3 损管日志 -->
+      <section class="panel" :class="{focused:focus==='hull3'}" @click="focus='hull3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">H3</span>
+          <h2>损管日志<em>DAMAGE LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">抢修记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">损管日志 · DAMAGE LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in hullLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：医疗 ============ -->
+    <div class="viewgrid" v-show="view==='med'">
+
+      <!-- M1 全舰健康 -->
+      <section class="panel" :class="{focused:focus==='med1'}" @click="focus='med1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">M1</span>
+          <h2>全舰健康<em>HEALTH INDEX</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:med.index<70}">{{ med.index<70 ? '异常' : '良好' }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell"><div class="tele-label">健康指数</div><div class="tele-value">{{ med.index }}<small>/100</small></div></div>
+            <div class="tele-cell"><div class="tele-label">在诊病患</div><div class="tele-value">{{ med.patients }}<small>人</small></div></div>
+            <div class="tele-cell"><div class="tele-label">医疗舱占用</div><div class="tele-value">{{ med.occupancy }}<small>%</small></div></div>
+            <div class="tele-cell warn"><div class="tele-label">辐射暴露</div><div class="tele-value">{{ med.exposure.toFixed(1) }}<small>mSv</small></div></div>
+            <div class="tele-cell"><div class="tele-label">心理状态</div><div class="tele-value">{{ med.psych }}<small>/100</small></div></div>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">医疗</span>
+            <span class="ai-text">{{ med.index<70 ? '全舰健康指数偏低，建议安排体检！' : '全舰健康状况良好。' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- M2 医疗资源 -->
+      <section class="panel" :class="{focused:focus==='med2'}" @click="focus='med2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">M2</span>
+          <h2>医疗资源<em>RESOURCES</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">{{ medRes.beds }} 舱位</span>
+        </header>
+        <div class="cmd-body">
+          <div class="stat-bars">
+            <div class="stat"><label>药品 <b>{{ medRes.drugs }}%</b></label><div class="bar"><i :class="barCls(medRes.drugs)" :style="{width:medRes.drugs+'%'}"></i></div></div>
+            <div class="stat"><label>疫苗 <b>{{ medRes.vaccine }}%</b></label><div class="bar"><i :class="barCls(medRes.vaccine)" :style="{width:medRes.vaccine+'%'}"></i></div></div>
+            <div class="stat"><label>医疗舱位 <b>{{ medRes.beds }} 张</b></label><div class="bar"><i :style="{width:(medRes.beds/6*100)+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" :class="{on:screening}" @click="runScreening">{{ screening?'体检进行中…':'例行体检' }}<em>SCREENING</em></button>
+            <button class="cmd-btn" @click="pandemicDrill">疫情演练<em>DRILL</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- M3 医疗记录 -->
+      <section class="panel" :class="{focused:focus==='med3'}" @click="focus='med3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">M3</span>
+          <h2>医疗记录<em>MED LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">诊疗记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">医疗日志 · MED LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in medLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：通信 ============ -->
+    <div class="viewgrid" v-show="view==='comms'">
+
+      <!-- K1 通信频道 -->
+      <section class="panel" :class="{focused:focus==='comms1'}" @click="focus='comms1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">K1</span>
+          <h2>通信频道<em>CHANNELS</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:selChanObj.sig<30}">信号 {{ selChanObj.sig.toFixed(0) }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="(c,i) in channels" :key="c.name" :class="{sel:selChan===i}" @click="selectChan(i)">
+            <span class="sn">{{ c.name }}</span>
+            <span class="sm">{{ c.freq }}</span>
+            <span class="sb"><i :class="barCls(c.sig)" :style="{width:c.sig+'%'}"></i></span>
+            <span class="sv">{{ c.sig.toFixed(0) }}</span>
+          </div>
+          <div class="ai-line">
+            <span class="ai-tag">当前</span>
+            <span class="ai-text">{{ selChanObj.name }} · {{ selChanObj.freq }} · 信号强度 {{ selChanObj.sig.toFixed(0) }}%</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- K2 消息与破译 -->
+      <section class="panel" :class="{focused:focus==='comms2'}" @click="focus='comms2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">K2</span>
+          <h2>消息与破译<em>DECRYPT</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:decipherPct>0&&decipherPct<100}">破译 {{ decipherPct }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-title">消息队列 · MESSAGE QUEUE</div>
+          <div class="msg-box">
+            <div class="msg" v-for="(m,i) in msgQueue" :key="i">◈ {{ m }}</div>
+          </div>
+          <div class="log-title">未知信号破译 · DECRYPTION</div>
+          <div class="scanbar"><i :style="{width:decipherPct+'%'}"></i></div>
+          <div class="orders">
+            <button class="cmd-btn" @click="sendBeacon">发送信标<em>BEACON</em></button>
+            <button class="cmd-btn" @click="decipher">破译数据包<em>DECRYPT</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- K3 情报日志 -->
+      <section class="panel" :class="{focused:focus==='comms3'}" @click="focus='comms3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">K3</span>
+          <h2>情报日志<em>COMMS LOG</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">通信记录</span>
+        </header>
+        <div class="cmd-body">
+          <div class="log-box">
+            <div class="log-title">通信日志 · COMMS LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in commsLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ============ 视图：科研 ============ -->
+    <div class="viewgrid" v-show="view==='sensor'">
+
+      <!-- R1 观测阵列 -->
+      <section class="panel" :class="{focused:focus==='sensor1'}" @click="focus='sensor1'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">R1</span>
+          <h2>观测阵列<em>SENSOR ARRAY</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state" :class="{on:scanPct>0&&scanPct<100}">扫描 {{ scanPct }}%</span>
+        </header>
+        <div class="cmd-body">
+          <div class="telemetry">
+            <div class="tele-cell"><div class="tele-label">光谱仪</div><div class="tele-value">{{ (sensor.spectral*100).toFixed(0) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">引力波阵</div><div class="tele-value">{{ (sensor.gravity*100).toFixed(0) }}<small>%</small></div></div>
+            <div class="tele-cell"><div class="tele-label">射电阵列</div><div class="tele-value">{{ (sensor.radio*100).toFixed(0) }}<small>%</small></div></div>
+          </div>
+          <div class="log-title">深空扫描 · DEEP SCAN</div>
+          <div class="scanbar"><i :style="{width:scanPct+'%'}"></i></div>
+          <div class="orders">
+            <button class="cmd-btn" @click="startScan">发起扫描<em>SCAN</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- R2 异常信号 -->
+      <section class="panel" :class="{focused:focus==='sensor2'}" @click="focus='sensor2'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">R2</span>
+          <h2>异常信号<em>ANOMALIES</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">待分析 {{ anomalies.filter(a=>a.status==='待分析').length }}</span>
+        </header>
+        <div class="cmd-body">
+          <div class="srow" v-for="(a,i) in anomalies" :key="a.name" :class="{sel:selAnomaly===i}" @click="selectAnomaly(i)">
+            <span class="sn">{{ a.name }}</span>
+            <span class="sm">{{ a.status }}</span>
+            <span class="sv" :class="{warn:a.status==='待分析'}">{{ a.status==='已分析' ? '✓ 已归档' : '… 待分析' }}</span>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="analyzeAnomaly">分析选中异常<em>ANALYZE</em></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- R3 数据档案 -->
+      <section class="panel" :class="{focused:focus==='sensor3'}" @click="focus='sensor3'">
+        <i class="corners"><i></i><i></i><i></i><i></i></i>
+        <header class="ph">
+          <span class="ph-idx">R3</span>
+          <h2>数据档案<em>ARCHIVE</em></h2>
+          <span class="ph-line"></span>
+          <span class="ph-state">{{ sensor.backlog.toFixed(0) }}% 占用</span>
+        </header>
+        <div class="cmd-body">
+          <div class="stat-bars">
+            <div class="stat"><label>档案占用 <b>{{ sensor.backlog.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:sensor.backlog+'%'}"></i></div></div>
+          </div>
+          <div class="orders">
+            <button class="cmd-btn" @click="packData">整理档案<em>PACK</em></button>
+          </div>
+          <div class="log-box">
+            <div class="log-title">科研日志 · RESEARCH LOG</div>
+            <div class="log-feed">
+              <div class="log-item" v-for="(item,i) in sensorLogs" :key="i" :class="'t-'+item.type">
+                <span class="lt">{{ item.t }}</span><span class="ls">{{ item.src }}</span><span class="lm">{{ item.msg }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+    </div>
+  </main>
+
+  <!-- 底栏 -->
+  <footer class="bottombar">
+    <div class="keys">{{ keysHint }}</div>
+    <div class="ticker">
+      <span><i>{{ tickerText }}</i><i>{{ tickerText }}</i></span>
+    </div>
+    <div class="globals">
+      <div class="gbar"><label>反应堆 <b>{{ reactorLoad }}%</b></label><div class="bar"><i :style="{width:reactorLoad+'%'}"></i></div></div>
+      <div class="gbar" :class="{crit:shieldPct&lt;30}"><label>护盾 <b>{{ shieldPct.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:shieldPct+'%'}"></i></div></div>
+      <div class="gbar warn"><label>燃料 <b>{{ fuelPct.toFixed(0) }}%</b></label><div class="bar"><i :style="{width:fuelPct+'%'}"></i></div></div>
+    </div>
+  </footer>
+
+  <!-- 跃迁闪光层 -->
+  <div class="warp-flash" v-if="warping"></div>
+
+  <!-- 星图弹层 -->
+  <div class="chart-modal" v-if="chartOpen" @keydown.esc="closeChart">
+    <div class="chart-box">
+      <header class="chart-head">
+        <div class="chart-title">星图<em>STAR CHART</em></div>
+        <div class="chart-dest"><i class="lg lg-c"></i>目的地 {{ dest.name }} · 航程 {{ dest.dist }} AU</div>
+        <button class="chart-close" @click="closeChart">✕ 关闭 · CLOSE</button>
+      </header>
+      <div class="chart-body">
+        <div class="chart-stage">
+          <canvas ref="chartCanvas" class="chart-canvas"></canvas>
+          <div class="pt" v-for="p in starPoints" :key="p.id"
+               :class="[p.reachable ? 'ok' : 'no', {sel:selPtId===p.id, dest:p.id===destId, L:p.x>58}]"
+               :style="{left:p.x+'%', top:p.y+'%'}" @click="selectPt(p.id)" :title="p.name + ' · ' + p.note">
+            <i class="pt-ico"></i>
+            <span class="pt-lb">{{ p.name }}</span>
+          </div>
+        </div>
+        <aside class="chart-info">
+          <div class="ci-label">选定坐标 · SELECTED</div>
+          <div class="ci-name">{{ selPt.name }}</div>
+          <div class="ci-en">{{ selPt.en }}</div>
+          <div class="ci-row"><span>类型</span><b>{{ ptType(selPt) }}</b></div>
+          <div class="ci-row"><span>航程</span><b>{{ selPt.dist }} AU</b></div>
+          <div class="ci-row"><span>可达性</span><b :class="selPt.reachable ? 'ok' : 'bad'">{{ selPt.reachable ? '可航行' : '不可达' }}</b></div>
+          <div class="ci-note">{{ selPt.note }}</div>
+          <div class="ci-hint">已标定 {{ starPoints.length }} 个坐标 · 其中可航行 {{ reachCount }} 个 · 点击坐标后设为目的地</div>
+          <button class="chart-set" :disabled="!selPt.reachable || selPt.id===destId" @click="setDestination(selPt.id)">
+            {{ selPt.id===destId ? '✓ 当前目的地' : '设为目的地 · SET DESTINATION' }}
+          </button>
+          <button class="chart-set ghost" @click="closeChart">返回舰桥 · BACK</button>
+        </aside>
+      </div>
+    </div>
+  </div>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   Vue 加载器：CDN 优先；失败或 4 秒超时 → 回退本地相对路径
+   ./libs/vue.global.prod.js（离线也能运行）
+   ============================================================ */
+(function(){
+  var urls = ['https://unpkg.com/vue@3/dist/vue.global.prod.js', './libs/vue.global.prod.js'];
+  var settled = false;
+  function fatal(){
+    var app = document.getElementById('app');
+    if(app){
+      app.removeAttribute('v-cloak');
+      app.innerHTML = '<div style="display:grid;place-items:center;height:100vh;color:#d6dde4;font-family:monospace;text-align:center;line-height:2">' +
+        '无法加载 Vue 运行时：CDN 与本地 libs/vue.global.prod.js 均不可用。<br>' +
+        'Vue runtime unavailable — CDN and local fallback both failed.</div>';
+    }
+  }
+  function showErr(e){
+    try{
+      var box = document.getElementById('errbox');
+      if(!box){
+        box = document.createElement('div');
+        box.id = 'errbox';
+        box.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:999;max-width:80vw;padding:8px 12px;background:rgba(40,10,12,.95);border:1px solid #e0564f;color:#ffd9d6;font-family:monospace;font-size:11px;line-height:1.6;white-space:pre-wrap';
+        document.body.appendChild(box);
+      }
+      box.textContent = 'RUNTIME ERROR: ' + (e && e.message ? e.message : String(e));
+    }catch(_){}
+  }
+  function tryLoad(i){
+    if(i >= urls.length){ if(!settled) fatal(); return; }
+    var s = document.createElement('script');
+    var t = null;
+    if(i === 0){
+      /* CDN 超时保护：4 秒未加载完成则切换到本地 */
+      t = setTimeout(function(){ if(!settled){ settled = true; tryLoad(i+1); } }, 4000);
+    }
+    s.onload = function(){
+      clearTimeout(t);
+      if(settled) return;
+      settled = true;
+      try{ startApp(); }catch(e){ showErr(e); }
+    };
+    s.onerror = function(){
+      clearTimeout(t);
+      if(settled) return;
+      settled = true;
+      tryLoad(i+1);
+    };
+    s.src = urls[i];
+    document.head.appendChild(s);
+  }
+  tryLoad(0);
+})();
+</script>
+<script>
+/* ============================================================
+   字体加载：CDN（Google Fonts）优先；不可用时注入本地相对路径
+   ./fonts/*.woff2 的 @font-face（文件缺失时自动落到系统字体）
+   ============================================================ */
+(function(){
+  function injectLocalFonts(){
+    var st = document.createElement('style');
+    st.textContent =
+      "@font-face{font-family:'Share Tech Mono';font-style:normal;font-weight:400;src:url('./fonts/share-tech-mono.woff2') format('woff2');}" +
+      "@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:300;src:url('./fonts/noto-sans-sc-300.woff2') format('woff2');}" +
+      "@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:400;src:url('./fonts/noto-sans-sc-400.woff2') format('woff2');}" +
+      "@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:500;src:url('./fonts/noto-sans-sc-500.woff2') format('woff2');}";
+    document.head.appendChild(st);
+  }
+  function checkAndFallback(){
+    try{
+      if(!document.fonts || !document.fonts.check) return;
+      var need = !document.fonts.check('12px "Share Tech Mono"') || !document.fonts.check('12px "Noto Sans SC"');
+      if(need) injectLocalFonts();
+    }catch(e){ injectLocalFonts(); }
+  }
+  try{
+    Promise.race([
+      document.fonts.ready,
+      new Promise(function(r){ setTimeout(r, 2500); })
+    ]).then(checkAndFallback);
+  }catch(e){ checkAndFallback(); }
+})();
+</script>
+<script>
+function startApp(){
+const { createApp, ref, reactive, computed, watch, onMounted, onUnmounted } = Vue;
+
+const __app = createApp({
+  setup(){
+
+    /* ================= 基础状态 ================= */
+    const alertLevel = ref('patrol');
+    const alertLevels = [
+      {key:'patrol', label:'巡航'},
+      {key:'alert',  label:'戒备'},
+      {key:'combat', label:'作战'},
+    ];
+    const sound   = ref(true);
+    const focus   = ref('nav');
+    const firing  = ref(false);
+
+    /* ================= 时钟 / 日志 ================= */
+    const now     = () => new Date();
+    const fmt2    = n => String(n).padStart(2,'0');
+    const timeFmt = () => { const d=now(); return `${fmt2(d.getHours())}:${fmt2(d.getMinutes())}:${fmt2(d.getSeconds())}`; };
+    const shipTime = ref('--:--:--');
+    const shipDate = ref('');
+    function tickClock(){
+      const d = now();
+      shipTime.value = timeFmt();
+      shipDate.value = `${d.getFullYear()}-${fmt2(d.getMonth()+1)}-${fmt2(d.getDate())} 星期${'日一二三四五六'[d.getDay()]}`;
+    }
+
+    const log = ref([]);
+    function pushLog(msg, type='info', src='系统'){
+      log.value.unshift({ t: timeFmt(), msg, type, src });
+      if(log.value.length > 80) log.value.length = 80;
+    }
+
+    /* ================= 音效 (WebAudio) ================= */
+    let actx = null;
+    function ensureAudio(){
+      if(!actx){ try{ actx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+    }
+    function beep(f=880, d=0.06, type='square', g=0.03){
+      if(!sound.value || !actx) return;
+      try{
+        const o = actx.createOscillator(), gn = actx.createGain();
+        o.type = type; o.frequency.value = f; gn.gain.value = g;
+        o.connect(gn); gn.connect(actx.destination);
+        const t = actx.currentTime;
+        gn.gain.setValueAtTime(g, t);
+        gn.gain.exponentialRampToValueAtTime(0.0001, t+d);
+        o.start(t); o.stop(t+d);
+      }catch(e){}
+    }
+    function toggleSound(){ sound.value = !sound.value; if(sound.value) beep(880,0.06,'square',0.04); }
+
+    /* ================= 星舰命名（localStorage 持久化） ================= */
+    const NAME_KEY = 'captainConsole.shipName';
+    const shipName  = ref('');
+    try{ shipName.value = localStorage.getItem(NAME_KEY) || ''; }catch(e){}
+    const nameDraft  = ref(shipName.value);
+    const showNaming = ref(false);
+    const displayName = computed(()=>{
+      const n = shipName.value.trim();
+      if(!n) return '';
+      return n.endsWith('号') ? n : n + '号';
+    });
+    const enTag = computed(()=>{
+      const n = shipName.value.trim();
+      if(!n) return 'STARSHIP';
+      return /[\u4e00-\u9fa5]/.test(n) ? 'STARSHIP' : n.toUpperCase();
+    });
+    const previewName = computed(()=>{
+      const n = nameDraft.value.trim();
+      if(!n) return '——';
+      return n.endsWith('号') ? n : n + '号';
+    });
+    function confirmName(){
+      const v = nameDraft.value.trim();
+      if(!v){ beep(200,0.1,'square',0.05); return; }
+      shipName.value = v;
+      try{ localStorage.setItem(NAME_KEY, v); }catch(e){}
+      showNaming.value = false;
+      document.title = `${displayName.value} · 舰长控制台`;
+      pushLog(`舰名登记完成：「${displayName.value}」`,'ok','舰长');
+      beep(880,0.1,'sine',0.05);
+      runBoot();
+    }
+    function openRename(){
+      nameDraft.value = shipName.value;
+      showNaming.value = true;
+      beep(520,0.05,'square',0.02);
+    }
+
+    /* ================= 开机自检 ================= */
+    const bootDone = ref(false);
+    const bootText = ref('');
+    let bootStarted = false;
+    function bootLines(){
+      return [
+        `${displayName.value} · 舰载计算机系统`,
+        `${enTag.value} · SHIPBOARD COMPUTER`,
+        '',
+        '> 加载核心模块 .............. 完成',
+        '> 反应堆并网 ............... 完成',
+        '> 导航星历同步 ............. 完成',
+        '> 武器子系统自检 ........... 完成',
+        '> 生命维持系统 ............. 完成',
+        '> 全系统自检通过 · ALL SYSTEMS NOMINAL',
+        '',
+        '欢迎登舰，舰长。',
+      ].join('\n');
+    }
+    let bootTimer = null;
+    function runBoot(){
+      if(bootStarted) return;
+      bootStarted = true;
+      const full = bootLines();
+      let i = 0;
+      bootTimer = setInterval(()=>{
+        i++;
+        bootText.value = full.slice(0, i);
+        if(i >= full.length){
+          clearInterval(bootTimer);
+          setTimeout(()=>{ bootDone.value = true; pushLog('舰载计算机上线 · ALL SYSTEMS NOMINAL','ok'); }, 500);
+        }
+      }, 26);
+    }
+    function skipBoot(){
+      if(bootDone.value || showNaming.value) return;
+      clearInterval(bootTimer);
+      bootDone.value = true;
+      pushLog('舰长跳过自检，接管控制台','cmd','舰长');
+      beep(660,0.08,'square',0.035);
+    }
+
+    /* ================= 航行状态 ================= */
+    const throttle  = ref(32);
+    const heading   = ref(217.6);
+    const fuel      = ref(86.4);
+    const stability = ref(99.1);
+    const speedKm   = computed(()=> (1.6 + throttle.value*0.34).toFixed(1));
+    const fuelPct   = computed(()=> Math.max(0, fuel.value));
+    const navState    = computed(()=> throttle.value > 0 ? '巡航中' : '待命');
+    const navStateCls = computed(()=> throttle.value > 0 ? 'on' : '');
+
+    /* ================= 星图导航 ================= */
+    const starPoints = reactive([
+      {id:'BASE', name:'林奈星港',       en:'LINNAEUS PORT',  x:16, y:82, dist:0.0, type:'base',     reachable:true,  note:'母港 · 补给与整备'},
+      {id:'C9',   name:'深空灯塔 C-9',   en:'BEACON C-9',     x:26, y:60, dist:1.4, type:'beacon',   reachable:true,  note:'导航信标 · 校准航向'},
+      {id:'TITAN',name:'泰坦前哨站',     en:'TITAN OUTPOST',  x:35, y:42, dist:2.1, type:'station',  reachable:true,  note:'中转前哨 · 医疗可用'},
+      {id:'FORGE',name:'铸造者船坞',     en:'FORGE YARD',     x:58, y:34, dist:5.0, type:'station',  reachable:true,  note:'船坞 · 维修与改装'},
+      {id:'AST',  name:'小行星带边缘',   en:'ASTEROID BELT',  x:52, y:66, dist:4.4, type:'resource', reachable:true,  note:'稀土矿脉 · 采集区'},
+      {id:'S7',   name:'观测点 S-7',     en:'OBSERVATORY S-7',x:86, y:26, dist:9.2, type:'objective',reachable:true,  note:'任务目标 · 光谱观测'},
+      {id:'T04',  name:'目标天体 T-04',  en:'TARGET T-04',    x:70, y:12, dist:8.1, type:'target',   reachable:true,  note:'交战目标 · 未知信号源'},
+      {id:'KOL',  name:'科尔沃星',       en:'KOLVO',          x:90, y:72, dist:11.3,type:'planet',   reachable:true,  note:'可殖民行星 · 大气探测'},
+      {id:'PER',  name:'佩尔修斯跃迁站', en:'PERSEUS GATE',   x:46, y:16, dist:3.6, type:'gate',     reachable:true,  note:'跃迁节点 · 超距航行'},
+      {id:'ERIS', name:'厄里斯裂隙',     en:'ERIS RIFT',      x:12, y:22, dist:3.1, type:'danger',   reachable:false, note:'空间裂隙 · 跃迁屏蔽'},
+      {id:'ZETA', name:'泽塔黑洞视界',   en:'ZETA HORIZON',   x:5,  y:52, dist:2.8, type:'danger',   reachable:false, note:'引力禁地 · 时间膨胀'},
+      {id:'DEAD', name:'死寂星域',       en:'DEAD SECTOR',    x:48, y:50, dist:6.5, type:'danger',   reachable:false, note:'高辐射禁入区'},
+      {id:'GAM',  name:'伽马弃舰墓场',   en:'GAMMA GRAVEYARD',x:30, y:92, dist:5.7, type:'danger',   reachable:false, note:'残骸带 · 掠夺者活动'},
+      {id:'ALPHA',name:'阿尔法矿带',     en:'ALPHA BELT',     x:74, y:88, dist:10.4,type:'resource', reachable:false, note:'深层矿脉 · 航线未开通'},
+      {id:'OBERS',name:'奥伯斯星云',     en:'OBERS NEBULA',   x:82, y:48, dist:13.0,type:'nebula',   reachable:false, note:'尘埃云 · 距离过远'},
+    ]);
+    const starLinks = [
+      ['BASE','C9'], ['C9','TITAN'], ['TITAN','FORGE'], ['FORGE','AST'],
+      ['AST','S7'], ['T04','S7'], ['FORGE','T04'], ['BASE','PER'], ['PER','KOL'], ['BASE','AST']
+    ];
+    const destId = ref('S7');
+    const selPtId = ref('S7');
+    const chartOpen = ref(false);
+    const dest  = computed(()=> starPoints.find(p => p.id === destId.value)  || starPoints[0]);
+    const selPt = computed(()=> starPoints.find(p => p.id === selPtId.value) || dest.value);
+    const reachCount = computed(()=> starPoints.filter(p => p.reachable).length);
+    function ptType(p){
+      return ({ base:'母港', station:'空间站', beacon:'导航信标', gate:'跃迁门', resource:'矿带',
+                objective:'观测点', target:'交战目标', planet:'行星', danger:'禁区', nebula:'星云' })[p.type] || p.type;
+    }
+    function selectPt(id){ selPtId.value = id; beep(520,0.05,'square',0.03); }
+    function setDestination(id){
+      const p = starPoints.find(x => x.id === id);
+      if(!p || !p.reachable){
+        pushLog(`「${p ? p.name : '该坐标'}」不可达，无法设为航路目标`,'warn','导航');
+        beep(140,0.2,'square',0.04); return;
+      }
+      destId.value = id; selPtId.value = id;
+      pushLog(`航路目标设定 →「${p.name}」（航程 ${p.dist} AU · ${p.note}）`,'cmd','导航');
+      beep(660,0.07,'square',0.04);
+    }
+    function openChart(){
+      chartOpen.value = true;
+      focus.value = '';
+      pushLog('星图展开 · STAR CHART','info','导航');
+      requestAnimationFrame(()=> sizeChartCanvas());
+    }
+    function closeChart(){
+      chartOpen.value = false;
+      pushLog('星图收合，返回舰桥','info','导航');
+      beep(420,0.06,'square',0.03);
+    }
+    const chartCanvas = ref(null);
+    let chartRaf = null, chartStars = [], chartRafOn = false;
+    function sizeChartCanvas(){
+      const cv = chartCanvas.value;
+      if(cv && cv.parentElement){ cv.width = cv.parentElement.clientWidth; cv.height = cv.parentElement.clientHeight; }
+      if(!chartStars.length){
+        chartStars = Array.from({length:160}, ()=>({x:Math.random()*2-1, y:Math.random()*2-1, z:Math.random()*0.9+0.1}));
+      }
+    }
+    function chartPos(p, w, h){
+      return { x: p.x/100*w, y: p.y/100*h };
+    }
+    function drawChart(ts){
+      chartRaf = requestAnimationFrame(drawChart);
+      if(!chartOpen.value) return;
+      const cv = chartCanvas.value; if(!cv) return;
+      const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+      if(!w || !h) return;
+      ctx.clearRect(0,0,w,h);
+      const dt = Math.min(50, ts - (drawChart._last||ts)); drawChart._last = ts;
+      // 星空
+      const spd = 0.00002 * dt;
+      for(const s of chartStars){
+        s.z -= spd;
+        if(s.z <= 0.08){ s.z = 1; s.x = Math.random()*2-1; s.y = Math.random()*2-1; }
+        const sx=(s.x/s.z*0.5+0.5)*w, sy=(s.y/s.z*0.5+0.5)*h, a=Math.max(0,1-s.z)*0.7;
+        ctx.fillStyle = `rgba(170,195,215,${a})`;
+        ctx.fillRect(sx,sy,(1-s.z)*1.3+0.3,(1-s.z)*1.3+0.3);
+      }
+      // 分区网格
+      ctx.strokeStyle = 'rgba(120,155,185,.08)'; ctx.lineWidth = 1;
+      for(let i=1;i<8;i++){ ctx.beginPath(); ctx.moveTo(w/8*i,0); ctx.lineTo(w/8*i,h); ctx.stroke(); }
+      for(let i=1;i<6;i++){ ctx.beginPath(); ctx.moveTo(0,h/6*i); ctx.lineTo(w,h/6*i); ctx.stroke(); }
+      // 安全航线
+      ctx.strokeStyle = 'rgba(111,195,201,.10)'; ctx.lineWidth = 1;
+      for(const [a,b] of starLinks){
+        const pa = starPoints.find(x=>x.id===a), pb = starPoints.find(x=>x.id===b);
+        if(!pa || !pb) continue;
+        const A = chartPos(pa,w,h), B = chartPos(pb,w,h);
+        ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke();
+      }
+      // 本舰 → 目的地 航线
+      const shipP = { x: 0.06*w, y: 0.9*h };
+      const dp = chartPos(dest.value, w, h);
+      ctx.setLineDash([5,8]); ctx.lineDashOffset = -(ts*0.03)%13;
+      ctx.strokeStyle = 'rgba(111,195,201,.8)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(shipP.x,shipP.y); ctx.lineTo(dp.x,dp.y); ctx.stroke();
+      ctx.setLineDash([]);
+      // 本舰发光与标记
+      const g = ctx.createRadialGradient(shipP.x,shipP.y,1,shipP.x,shipP.y,16);
+      g.addColorStop(0,'rgba(111,195,201,.35)'); g.addColorStop(1,'rgba(111,195,201,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(shipP.x,shipP.y,16,0,7); ctx.fill();
+      ctx.save(); ctx.translate(shipP.x,shipP.y);
+      ctx.rotate(Math.atan2(dp.y-shipP.y, dp.x-shipP.x));
+      ctx.fillStyle = '#dfe8ef';
+      ctx.beginPath(); ctx.moveTo(11,0); ctx.lineTo(-7,-6); ctx.lineTo(-4,0); ctx.lineTo(-7,6); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    function startChartRaf(){
+      if(chartRafOn) return;
+      chartRafOn = true;
+      chartRaf = requestAnimationFrame(drawChart);
+    }
+    function stopChartRaf(){
+      if(chartRaf){ cancelAnimationFrame(chartRaf); chartRaf = null; }
+      chartRafOn = false;
+    }
+    /* 星图打开时驱动图表帧 */
+    watch(chartOpen, v => v ? startChartRaf() : stopChartRaf());
+
+    /* ================= 星海 Canvas ================= */
+    const starCanvas = ref(null);
+    let stars = [], raf = null, canvasRO = null;
+    function sizeCanvas(){
+      const cv = starCanvas.value, rc = radarCanvas.value;
+      if(cv && cv.parentElement){ cv.width = cv.parentElement.clientWidth;  cv.height = cv.parentElement.clientHeight; }
+      if(rc && rc.parentElement){ rc.width = rc.parentElement.clientWidth;  rc.height = rc.parentElement.clientHeight; }
+    }
+    function drawStars(ts){
+      raf = requestAnimationFrame(drawStars);
+      const cv = starCanvas.value; if(!cv) return;
+      const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+      ctx.clearRect(0,0,w,h);
+      const dt = Math.min(50, ts - (drawStars._last||ts)); drawStars._last = ts;
+      const warpBoost = warping.value ? 16 : 1;
+      const spd = (0.00035 + throttle.value*0.000045) * dt * warpBoost;
+      for(const s of stars){
+        const px = (s.x/s.z*0.5+0.5)*w, py = (s.y/s.z*0.5+0.5)*h;
+        const reset = s.z <= 0.04;
+        s.z -= spd;
+        if(reset){ s.z = 1; s.x = Math.random()*2-1; s.y = Math.random()*2-1; }
+        const sx = (s.x/s.z*0.5+0.5)*w, sy = (s.y/s.z*0.5+0.5)*h;
+        if(sx<0||sx>w||sy<0||sy>h) continue;
+        if(warping.value){
+          if(!reset){
+            ctx.strokeStyle = `rgba(190,205,220,${Math.max(0,1-s.z)*0.8})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(sx,sy); ctx.stroke();
+          }else{
+            ctx.fillStyle = `rgba(190,205,220,${Math.max(0,1-s.z)*0.9})`;
+            ctx.fillRect(sx,sy,1.2,1.2);
+          }
+        }else{
+          ctx.fillStyle = `rgba(190,205,220,${Math.max(0,1-s.z)*0.9})`;
+          const r = 0.3 + (1-s.z)*1.4;
+          ctx.fillRect(sx,sy,r,r);
+        }
+      }
+      // 星图迷你示意：本舰 + 航线 + 各坐标点
+      const shipP = { x: 0.07*w, y: 0.9*h };
+      const dp = chartPos(dest.value, w, h);
+      ctx.setLineDash([4,7]); ctx.lineDashOffset = -(ts*0.02)%11;
+      ctx.strokeStyle = 'rgba(111,195,201,0.6)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(shipP.x, shipP.y); ctx.lineTo(dp.x, dp.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = '7px "Share Tech Mono", monospace';
+      for(const p of starPoints){
+        const pos = chartPos(p, w, h);
+        const isDest = p.id === destId;
+        if(p.reachable){
+          ctx.strokeStyle = isDest ? 'rgba(230,246,247,0.95)' : 'rgba(111,195,201,0.7)';
+          ctx.strokeRect(pos.x-2.5, pos.y-2.5, 5, 5);
+          ctx.fillStyle = isDest ? 'rgba(230,246,247,0.95)' : 'rgba(180,205,215,0.6)';
+          if(p.x > 58){ ctx.textAlign = 'right'; ctx.fillText(p.name, pos.x-4, pos.y+3); ctx.textAlign = 'left'; }
+          else ctx.fillText(p.name, pos.x+4, pos.y+3);
+        } else {
+          ctx.strokeStyle = 'rgba(224,86,79,0.5)';
+          ctx.beginPath();
+          ctx.moveTo(pos.x-2, pos.y-2); ctx.lineTo(pos.x+2, pos.y+2);
+          ctx.moveTo(pos.x+2, pos.y-2); ctx.lineTo(pos.x-2, pos.y+2);
+          ctx.stroke();
+        }
+        if(isDest){
+          ctx.strokeStyle = 'rgba(111,195,201,0.9)';
+          ctx.beginPath(); ctx.arc(pos.x, pos.y, 7, 0, 7); ctx.stroke();
+        }
+      }
+      // 本舰
+      const sx = shipP.x, sy = shipP.y;
+      if(throttle.value > 2){
+        const g = ctx.createRadialGradient(sx,sy,1,sx,sy,14+throttle.value*0.12);
+        g.addColorStop(0,'rgba(111,195,201,0.35)'); g.addColorStop(1,'rgba(111,195,201,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(sx,sy,14+throttle.value*0.12,0,7); ctx.fill();
+      }
+      ctx.save(); ctx.translate(sx,sy);
+      const ang = Math.atan2(dp.y - sy, dp.x - sx);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#dfe8ef';
+      ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(-6,-5); ctx.lineTo(-3,0); ctx.lineTo(-6,5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    /* ================= 战术雷达 Canvas ================= */
+    const radarCanvas = ref(null);
+    const firePing = ref(0);
+    const lockP = ref(0), locked = ref(false);
+    const blips = [
+      {ang:0.55, r:0.44, kind:'hostile'},
+      {ang:2.15, r:0.28, kind:'neutral'},
+      {ang:3.90, r:0.58, kind:'unknown'},
+      {ang:5.20, r:0.50, kind:'neutral'},
+    ];
+    let raf2 = null, sweep = 0;
+    function drawRadar(ts){
+      raf2 = requestAnimationFrame(drawRadar);
+      const cv = radarCanvas.value; if(!cv) return;
+      const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+      const cx = w/2, cy = h/2, R = Math.min(w,h)/2 - 6;
+      const dt = Math.min(50, ts - (drawRadar._last||ts)); drawRadar._last = ts;
+      sweep = (sweep + dt*0.0016) % (Math.PI*2);
+      ctx.clearRect(0,0,w,h);
+      // 圆环与十字
+      ctx.strokeStyle = 'rgba(140,160,180,0.16)';
+      for(let i=1;i<=3;i++){ ctx.beginPath(); ctx.arc(cx,cy,R*i/3,0,7); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke();
+      // 扫描扇面
+      ctx.fillStyle = 'rgba(111,195,201,0.10)';
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,sweep-0.6,sweep); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(111,195,201,0.7)';
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(sweep)*R, cy+Math.sin(sweep)*R); ctx.stroke();
+      // 目标光点
+      for(let i=0;i<blips.length;i++){
+        const b = blips[i];
+        const jitter = Math.sin(ts*0.001+i*7)*0.015;
+        const bx = cx + Math.cos(b.ang+jitter)*b.r*R, by = cy + Math.sin(b.ang+jitter)*b.r*R;
+        const color = b.kind==='hostile' ? 'rgba(224,86,79,0.9)' : b.kind==='unknown' ? 'rgba(217,164,65,0.9)' : 'rgba(140,160,180,0.7)';
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(bx,by,2.2,0,7); ctx.fill();
+        if(b.kind==='hostile' && locked.value){
+          ctx.strokeStyle = color;
+          ctx.beginPath(); ctx.arc(bx,by,6,0,7); ctx.stroke();
+        }
+      }
+      // 本舰
+      ctx.fillStyle = '#dfe8ef'; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,7); ctx.fill();
+      ctx.strokeStyle = 'rgba(223,232,239,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,6,0,7); ctx.stroke();
+      // 开火扩散波
+      if(firePing.value > 0.01){
+        firePing.value *= (1 - dt*0.004);
+        ctx.strokeStyle = `rgba(224,86,79,${(firePing.value*0.8).toFixed(3)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx,cy,(1-firePing.value)*R+4,0,7); ctx.stroke();
+      }
+    }
+
+    /* ================= 武器系统 ================= */
+    const weapons = reactive([
+      {id:'rail',  cn:'电磁轨道炮',    en:'RAILGUN',       kind:'动能', charge:38,  ammo:96,       max:96,  status:'ready', cd:0},
+      {id:'laser', cn:'脉冲激光阵列',  en:'PULSE LASER',   kind:'能量', charge:74,  ammo:Infinity, max:0,   status:'ready', cd:0},
+      {id:'torp',  cn:'重型鱼雷管 ×4', en:'TORPEDO TUBES', kind:'制导', charge:0,   ammo:12,       max:12,  status:'ready', cd:0},
+      {id:'pd',    cn:'点防御炮阵',    en:'POINT DEFENSE', kind:'拦截', charge:100, ammo:400,      max:400, status:'ready', cd:0},
+    ]);
+    const selWeapon = ref('rail');
+    const charging  = ref(false);
+    let chargeTimer = null, lockTimer = null;
+    const selW = computed(()=> weapons.find(w=>w.id===selWeapon.value));
+
+    function selectWeapon(id){ selWeapon.value = id; beep(520,0.04,'square',0.02); }
+    function stopCharge(msg){
+      clearInterval(chargeTimer); chargeTimer = null; charging.value = false;
+      if(msg) pushLog(msg,'ok','火控');
+    }
+    function toggleCharge(){
+      const w = selW.value;
+      if(w.ammo !== Infinity && w.ammo <= 0){
+        pushLog(`${w.cn} 弹药不足，无法充能`,'warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(charging.value){ stopCharge('充能中断'); return; }
+      if(w.charge >= 100){ pushLog(`${w.cn} 已满充能`,'info','火控'); return; }
+      charging.value = true;
+      pushLog(`${w.cn} 开始充能…`,'info','火控');
+      chargeTimer = setInterval(()=>{
+        const ww = selW.value; if(!ww) return;
+        ww.charge = Math.min(100, ww.charge + 7);
+        beep(200 + ww.charge*4, 0.03, 'square', 0.012);
+        if(ww.charge >= 100) stopCharge(`${ww.cn} 充能完毕，随时可开火`);
+      }, 90);
+    }
+    function fireWeapon(w){
+      if(!w) w = selW.value;
+      if(!w || w.status !== 'ready') return;
+      if(!locked.value){
+        pushLog('未锁定目标，无法开火','warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(w.ammo !== Infinity && w.ammo <= 0){
+        pushLog(`${w.cn} 弹药不足`,'warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(w.charge < 100){ pushLog(`${w.cn} 充能不足（${w.charge}%）`,'warn','火控'); beep(200,0.12,'square',0.04); return; }
+      if(w.ammo !== Infinity) w.ammo--;
+      w.charge = 0;
+      firePing.value = 1;
+      firing.value = true; setTimeout(()=> firing.value = false, 320);
+      pushLog(
+        `${w.cn} 开火 → 已锁定目标 T-04 · 命中概率 97%`,
+        'ok', '火控'
+      );
+      if(autoMode.value !== 'all'){   // 智能作战静音：取消每次发射提示音
+        beep(1500,0.16,'sawtooth',0.05);
+        setTimeout(()=> beep(700,0.1,'square',0.03), 120);
+      }
+    }
+    function toggleLock(){
+      if(locked.value){
+        locked.value = false; lockP.value = 0;
+        pushLog('目标锁定解除','info','火控'); return;
+      }
+      if(lockTimer) return;
+      pushLog('正在锁定目标 T-04 …','info','火控');
+      lockTimer = setInterval(()=>{
+        lockP.value = Math.min(100, lockP.value + 4);
+        if(lockP.value >= 100){
+          clearInterval(lockTimer); lockTimer = null;
+          locked.value = true;
+          pushLog('目标 T-04 已锁定','ok','火控');
+          beep(880,0.12,'sine',0.05);
+        }
+      }, 80);
+    }
+
+    /* ================= 自动火控（持续开火 / 智能作战） ================= */
+    const autoMode = ref('none');
+    let autoTimer = null;
+    const AUTO_TICK = 150;                  // 自动火控驱动节拍（ms）
+    const WEAPON_CD = {                     // 各武器冷却区间（ms）：武器间不同，均 ≤ 3s
+      rail:  { min: 2000, max: 2600 },
+      laser: { min: 600,  max: 1000 },
+      torp:  { min: 2300, max: 2900 },
+      pd:    { min: 1000, max: 1500 },
+    };
+    function rollCd(id){
+      const c = WEAPON_CD[id] || { min: 1000, max: 1500 };
+      return Math.round(c.min + Math.random() * (c.max - c.min));
+    }
+    function canFire(w){ return !!w && w.status === 'ready' && (w.ammo === Infinity || w.ammo > 0); }
+    function anyFiniteAmmo(){ return weapons.some(w => w.ammo !== Infinity && w.ammo > 0); }
+    function startAuto(mode){
+      if(!locked.value){
+        pushLog('未锁定目标，无法自动开火','warn','火控');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(charging.value) stopCharge();
+      autoMode.value = mode;
+      pushLog(
+        mode === 'single' ? `自动火控启动：「${selW.value.cn}」持续开火` : '智能作战启动：全武器自动接战',
+        'ok','火控'
+      );
+      beep(660,0.08,'square',0.04);
+      autoTick();
+      autoTimer = setInterval(autoTick, AUTO_TICK);
+    }
+    function stopAuto(msg){
+      if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
+      if(autoMode.value !== 'none'){
+        autoMode.value = 'none';
+        pushLog(msg || '自动火控已停止','info','火控');
+        beep(420,0.07,'square',0.035);
+      }
+    }
+    function toggleAuto(mode){
+      if(autoMode.value === mode){ stopAuto(); return; }
+      if(autoMode.value !== 'none') stopAuto();
+      startAuto(mode);
+    }
+    function autoTick(){
+      if(autoMode.value === 'none') return;
+      if(!locked.value){ stopAuto('目标锁定解除，自动火控停止'); return; }
+      if(autoMode.value === 'single'){
+        const w = selW.value;
+        if(!canFire(w)){
+          stopAuto(`${w ? w.cn : '武器'} 弹药不足，持续开火停止`);
+          return;
+        }
+        if(w.cd > 0){ w.cd = Math.max(0, w.cd - AUTO_TICK); return; }   // 冷却中
+        w.charge = Math.min(100, w.charge + 7);
+        if(w.charge >= 100){ fireWeapon(w); w.cd = rollCd(w.id); }
+      }else{
+        for(const w of weapons){
+          if(w.cd > 0){ w.cd = Math.max(0, w.cd - AUTO_TICK); continue; }  // 冷却中
+          if(!canFire(w)) continue;
+          w.charge = Math.min(100, w.charge + 7);
+          if(w.charge >= 100){ fireWeapon(w); w.cd = rollCd(w.id); }
+        }
+        if(!anyFiniteAmmo()) stopAuto('智能作战完成：有限弹药全部耗尽');
+      }
+    }
+
+    /* ================= 命令系统 ================= */
+    const orders = reactive({ engines:false, warp:false, shield:false, stealth:false });
+    const engineIgnite = ref(false);
+    let engineIgniteTimer = null;
+    const flameOpacity = computed(()=> orders.engines ? Math.min(1, 0.35 + throttle.value/160) : 0);
+    const cmdButtons = [
+      {key:'engines', cn:'引擎点火',  en:'ENGINES'},
+      {key:'warp',    cn:'跃迁就绪',  en:'WARP READY'},
+      {key:'shield',  cn:'护盾展开',  en:'SHIELD'},
+      {key:'stealth', cn:'电子静默',  en:'EM SILENCE'},
+    ];
+    const ORDER_MSG = {
+      engines:{ on:'主推进器点火成功，输出 12%',          off:'引擎停车，转入惯性滑行' },
+      shield: { on:'护盾阵列展开，覆盖 100%',             off:'护盾回收，转入装甲直射防护' },
+    };
+    function toggleOrder(key){
+      if(key === 'engines' && !orders.engines && fuel.value <= 0){
+        pushLog('燃料不足，引擎无法点火','crit','舰长');
+        beep(140,0.25,'sawtooth',0.06);
+        return;
+      }
+      if(key === 'stealth'){
+        orders.stealth = !orders.stealth;
+        if(orders.stealth){
+          clearInterval(aiTimer); aiTimer = null;
+          clearTimeout(aiWait); aiWait = null;
+          aiText.value = '（电子静默中）';
+          pushLog('全频段发射关闭，进入电子静默','ok','舰长');
+        }else{
+          aiText.value = '';
+          pushLog('电子静默解除，恢复通信','info','舰长');
+          runAi();
+        }
+        beep(orders.stealth ? 420 : 640, 0.07, 'square', 0.035);
+        return;
+      }
+      orders[key] = !orders[key];
+      if(key === 'engines' && orders.engines){
+        /* 点火闪光动效 */
+        clearTimeout(engineIgniteTimer);
+        engineIgnite.value = true;
+        engineIgniteTimer = setTimeout(()=> engineIgnite.value = false, 1400);
+      }
+      pushLog(ORDER_MSG[key][orders[key] ? 'on':'off'], orders[key] ? 'ok':'info', '舰长');
+      beep(orders[key] ? 640 : 420, 0.07, 'square', 0.035);
+    }
+
+    /* ================= 跃迁系统 ================= */
+    const WARP_MS = 90000;
+    const warpReady = ref(false);
+    const warping = ref(false);
+    const warpLeft = ref(0);
+    let warpTimer = null;
+    const warpPctText = computed(()=> Math.round((1 - warpLeft.value / WARP_MS) * 100) + '%');
+    function handleWarp(){
+      if(warpReady.value){ executeWarp(); return; }
+      if(orders.warp){ cancelWarp(); return; }
+      orders.warp = true;
+      warpLeft.value = WARP_MS;
+      pushLog('跃迁引擎开始充能，预计 90 秒后可用','cmd','舰长');
+      beep(640,0.07,'square',0.035);
+      warpTimer = setInterval(()=>{
+        warpLeft.value = Math.max(0, warpLeft.value - 100);
+        if(warpLeft.value <= 0){
+          clearInterval(warpTimer); warpTimer = null;
+          orders.warp = false;
+          warpReady.value = true;
+          pushLog('跃迁引擎充能完毕，随时可执行跃迁','ok','舰长');
+          beep(880,0.12,'sine',0.05);
+        }
+      }, 100);
+    }
+    function cancelWarp(){
+      clearInterval(warpTimer); warpTimer = null;
+      orders.warp = false;
+      warpLeft.value = 0;
+      pushLog('跃迁充能已取消','info','舰长');
+      beep(420,0.07,'square',0.035);
+    }
+    function executeWarp(){
+      warpReady.value = false;
+      orders.warp = false;
+      warping.value = true;
+      pushLog('跃迁执行！航速跃升至 12.6 倍光速','ok','舰长');
+      beep(1200,0.3,'sawtooth',0.05);
+      setTimeout(()=> beep(700,0.15,'sine',0.04), 400);
+      if(orders.engines) orders.engines = false;
+      setTimeout(()=>{
+        warping.value = false;
+        pushLog('跃迁完成，推进系统重新预热','info','舰长');
+        beep(520,0.1,'sine',0.04);
+      }, 2500);
+    }
+    function btnCls(b){
+      if(b.key === 'warp'){
+        if(warpReady.value) return {warpready:true};
+        return orders.warp ? {warpcharge:true} : {};
+      }
+      return {on:orders[b.key]};
+    }
+    function btnLabel(b){
+      if(b.key === 'warp'){
+        if(warpReady.value) return '执行跃迁';
+        return orders.warp ? '跃迁充能 ' + warpPctText.value : '跃迁就绪';
+      }
+      return b.cn;
+    }
+    function btnEn(b){
+      if(b.key === 'warp'){
+        if(warpReady.value) return 'ENGAGE WARP';
+        return orders.warp ? 'CHARGING' : 'WARP READY';
+      }
+      return b.en;
+    }
+    function btnClick(b){
+      if(b.key === 'warp'){ handleWarp(); return; }
+      toggleOrder(b.key);
+    }
+    function alarm(){
+      setAlert('combat');
+      pushLog('紧急警报！全舰进入作战状态','crit','舰长');
+      beep(120,0.3,'sawtooth',0.08);
+      setTimeout(()=> beep(120,0.3,'sawtooth',0.08), 350);
+    }
+    function setAlert(k){
+      if(alertLevel.value === k) return;
+      alertLevel.value = k;
+      const lb = alertLevels.find(l=>l.key===k).label;
+      pushLog(`战备等级切换 →「${lb}」`,'cmd','舰长');
+      beep(700,0.08,'square',0.03);
+    }
+
+    const sysLeds = computed(()=>[
+      {key:'reactor', label:'反应堆', on:true},
+      {key:'shield',  label:'护盾',   on:orders.shield},
+      {key:'nav',     label:'导航',   on:true},
+    ]);
+
+    /* ================= 视图切换（三域：作战 / 舰船 / 情报） ================= */
+    const view = ref('combat');
+    const DOMAINS = [
+      {key:'ops',   cn:'作战', en:'OPS',   views:['combat']},
+      {key:'ship',  cn:'舰船', en:'SHIP',  views:['power','hull','cargo','med']},
+      {key:'intel', cn:'情报', en:'INTEL', views:['comms','sensor']},
+    ];
+    const domainButtons = DOMAINS;
+    const VIEWS = [
+      {key:'combat', cn:'作战', en:'OPS',    p1:'航行', p2:'命令', p3:'武器'},
+      {key:'power',  cn:'动力', en:'POWER',  p1:'输出', p2:'负载', p3:'事件'},
+      {key:'hull',   cn:'损管', en:'HULL',   p1:'剖面', p2:'抢修', p3:'日志'},
+      {key:'cargo',  cn:'物资', en:'CARGO',  p1:'库存', p2:'详情·日志', p3:'维生'},
+      {key:'med',    cn:'医疗', en:'MED',    p1:'指标', p2:'资源', p3:'记录'},
+      {key:'comms',  cn:'通信', en:'COMMS',  p1:'频道', p2:'破译', p3:'情报'},
+      {key:'sensor', cn:'科研', en:'SENSOR', p1:'观测', p2:'异常', p3:'档案'},
+    ];
+    const domain = computed(()=> DOMAINS.find(d => d.views.includes(view.value)) || DOMAINS[0]);
+    const subViews = computed(()=> domain.value.views.map(k => VIEWS.find(v => v.key === k)));
+    function setView(k){
+      if(view.value === k) return;
+      view.value = k;
+      focus.value = '';
+      const vn = VIEWS.find(v => v.key === k).cn;
+      pushLog(`切换至「${vn}」控制台`,'info','系统');
+      beep(520,0.05,'square',0.03);
+    }
+    function setDomain(key){
+      const d = DOMAINS.find(x => x.key === key);
+      if(!d || d.views.includes(view.value)) return;
+      setView(d.views[0]);
+    }
+    function moveSub(dir){
+      const arr = domain.value.views;
+      if(arr.length <= 1) return;
+      const i = arr.indexOf(view.value);
+      setView(arr[(i + dir + arr.length) % arr.length]);
+    }
+    const keysHint = computed(()=> {
+      const v = VIEWS.find(x => x.key === view.value);
+      const s = v ? `1 ${v.p1}  2 ${v.p2}  3 ${v.p3}` + (view.value === 'combat' ? '  空格 开火' : '') : '';
+      return (domain.value.views.length > 1 ? 'Q/E 切换子系统 · ' : '') + s;
+    });
+
+    /* ================= 维生系统 ================= */
+    const life = reactive({ o2:78.5, co2:0.04, pressure:101.3, temp:21.5, humidity:42 });
+    const lifeSystems = reactive({ oxy:true, scrubber:true, thermo:true, hydro:false });
+    const lifeSysButtons = [
+      {key:'oxy',      cn:'制氧循环', en:'O₂ SCRUB'},
+      {key:'scrubber', cn:'CO₂ 净化', en:'CO₂ FILTER'},
+      {key:'thermo',   cn:'温度调控', en:'THERMO'},
+      {key:'hydro',    cn:'水培循环', en:'HYDRO'},
+    ];
+    const lifeEms = reactive({ lockdown:false, airlock:false, radshield:false });
+    const lifeEmsButtons = [
+      {key:'lockdown', cn:'减压封锁', en:'LOCKDOWN'},
+      {key:'airlock',  cn:'气闸隔离', en:'AIRLOCK'},
+      {key:'radshield',cn:'辐射屏蔽', en:'RAD SHIELD'},
+    ];
+    const lifeTip = computed(()=>{
+      if(life.o2 < 70) return '氧气浓度偏低，建议启动制氧循环！';
+      if(life.co2 > 0.08) return 'CO₂ 浓度偏高，净化系统负载增大。';
+      if(life.temp > 26) return '舱内温度偏高，建议加强温控。';
+      return '生命维持系统运行稳定，所有指标正常。';
+    });
+    function toggleLifeSystem(key){
+      lifeSystems[key] = !lifeSystems[key];
+      const MSG = { oxy:'制氧循环', scrubber:'CO₂ 净化', thermo:'温度调控', hydro:'水培循环' };
+      pushLog(`${MSG[key]} ${lifeSystems[key] ? '启动' : '关闭'}`, lifeSystems[key] ? 'ok' : 'info', '维生');
+      beep(lifeSystems[key] ? 520 : 380, 0.06, 'square', 0.03);
+    }
+    function toggleLifeEms(key){
+      lifeEms[key] = !lifeEms[key];
+      const MSG = { lockdown:'紧急减压封锁', airlock:'气闸隔离', radshield:'辐射屏蔽阵列' };
+      pushLog(`${MSG[key]}已${lifeEms[key] ? '启动' : '解除'}`, lifeEms[key] ? 'ok' : 'info', '维生');
+      beep(lifeEms[key] ? 660 : 420, 0.07, 'square', 0.035);
+    }
+    function barCls(v){ return v >= 70 ? 'ok' : v >= 40 ? 'warn' : 'crit'; }
+
+    /* ================= 动力与能量管理 ================= */
+    const power = reactive({
+      reactor: 72,
+      branches: { thrust:35, shield:25, weapons:20, life:10, thermo:5, habitat:5 },
+      emergency: false,
+    });
+    const powerBranches = [
+      {key:'thrust',  cn:'推进',   en:'THRUST'},
+      {key:'shield',  cn:'护盾',   en:'SHIELD'},
+      {key:'weapons', cn:'武器',   en:'WEAPONS'},
+      {key:'life',    cn:'维生',   en:'LIFE'},
+      {key:'thermo',  cn:'温控',   en:'THERMO'},
+      {key:'habitat', cn:'生活舱', en:'HABITAT'},
+    ];
+    const powerTotal = computed(()=> Object.values(power.branches).reduce((a,b)=>a+b,0));
+    const powerLogs = computed(()=> log.value.filter(i => i.src === '动力'));
+    function loadState(key){
+      const v = power.branches[key];
+      return v >= 75 ? '高载' : v <= 15 ? '低载' : '正常';
+    }
+    function setBranch(key, val){
+      power.branches[key] = Math.max(0, Math.min(100, Number(val) || 0));
+      pushLog(`动力分配调整 → ${powerBranches.find(b=>b.key===key).cn} ${power.branches[key]}%`,'info','动力');
+    }
+    function toggleEmergency(){
+      power.emergency = !power.emergency;
+      if(power.emergency){
+        power.branches.weapons = 90; power.branches.thrust = 60; power.branches.shield = 70;
+        power.branches.life = 15; power.branches.thermo = 5; power.branches.habitat = 5;
+        pushLog('紧急动力模式启动：全功率优先武器与护盾','crit','动力');
+      }else{
+        power.branches = { thrust:35, shield:25, weapons:20, life:10, thermo:5, habitat:5 };
+        pushLog('动力分配恢复标准模式','info','动力');
+      }
+      beep(power.emergency ? 660 : 420, 0.07, 'square', 0.035);
+    }
+
+    /* ================= 物资与补给 ================= */
+    const cargo = reactive([
+      {name:'推进剂', en:'PROPELLANT', amount:73, max:100, rate:0.04},
+      {name:'弹药',   en:'ORDNANCE',   amount:64, max:100, rate:0.02},
+      {name:'食物',   en:'FOOD',       amount:81, max:100, rate:0.03},
+      {name:'药品',   en:'MEDS',       amount:58, max:100, rate:0.015},
+      {name:'备件',   en:'SPARES',     amount:47, max:100, rate:0.01},
+    ]);
+    const selCargo = ref(0);
+    const selCargoObj = computed(()=> cargo[selCargo.value] || cargo[0]);
+    const rationing = ref(false);
+    const lowCargo = computed(()=> cargo.filter(c => c.amount < 30));
+    const cargoLogs = computed(()=> log.value.filter(i => i.src === '物资'));
+    function selectCargo(i){ selCargo.value = i; beep(520,0.04,'square',0.02); }
+    function cargoEta(item){
+      const r = rationing.value && item.name === '食物' ? item.rate * 0.4 : item.rate;
+      return Math.max(0, Math.round(item.amount / (r * 30)));
+    }
+    function requestSupply(){
+      const it = selCargoObj.value;
+      it.amount = it.max;
+      pushLog(`${it.name} 补给完成 → ${it.max}%`,'ok','物资');
+      beep(640,0.06,'square',0.03);
+    }
+    function toggleRationing(){
+      rationing.value = !rationing.value;
+      pushLog(`紧急配给${rationing.value ? '启动：食物消耗降低 60%' : '解除'}`, rationing.value ? 'warn' : 'info', '物资');
+      beep(rationing.value ? 420 : 640, 0.06, 'square', 0.03);
+    }
+
+    /* ================= 舰体结构与损管 ================= */
+    const hull = reactive([
+      {name:'舰首装甲', integrity:96}, {name:'前舱段', integrity:92}, {name:'舰桥', integrity:100},
+      {name:'中段结构', integrity:88}, {name:'货舱', integrity:90}, {name:'引擎舱', integrity:95},
+      {name:'左舷', integrity:93}, {name:'右舷', integrity:91},
+    ]);
+    const selHull = ref(2);
+    const selHullObj = computed(()=> hull[selHull.value] || hull[0]);
+    const repairTeams = ref(3);
+    const hullOverall = computed(()=> Math.round(hull.reduce((a,b)=>a+b.integrity,0) / hull.length));
+    const hullLogs = computed(()=> log.value.filter(i => i.src === '损管'));
+    function selectHull(i){ selHull.value = i; beep(520,0.04,'square',0.02); }
+    function deployRepair(){
+      const h = selHullObj.value;
+      if(h.integrity >= 100){ pushLog(`「${h.name}」结构完好，无需抢修`,'info','损管'); return; }
+      if(repairTeams.value <= 0){ pushLog('抢修小组已全部部署','warn','损管'); beep(140,0.2,'square',0.04); return; }
+      repairTeams.value--;
+      h.integrity = Math.min(100, h.integrity + 12);
+      pushLog(`抢修组部署 → 「${h.name}」修复至 ${h.integrity}% · 可用小组 ${repairTeams.value}`,'cmd','损管');
+      beep(640,0.06,'square',0.03);
+    }
+    function recallRepair(){
+      if(repairTeams.value >= 3){ pushLog('抢修小组已全部待命','info','损管'); return; }
+      repairTeams.value++;
+      pushLog(`抢修组返回待命 · 可用小组 ${repairTeams.value}`,'info','损管');
+      beep(420,0.06,'square',0.03);
+    }
+
+    /* ================= 医疗与健康（聚合指标） ================= */
+    const med = reactive({ index:88, patients:2, occupancy:40, exposure:12, psych:82 });
+    const medRes = reactive({ drugs:65, vaccine:70, beds:5 });
+    const screening = ref(false);
+    const medLogs = computed(()=> log.value.filter(i => i.src === '医疗'));
+    function runScreening(){
+      if(screening.value) return;
+      screening.value = true;
+      med.index = Math.min(100, med.index + 2);
+      pushLog('全舰例行体检完成 · 健康指数上升','ok','医疗');
+      beep(640,0.06,'sine',0.04);
+      setTimeout(()=> screening.value = false, 1500);
+    }
+    function pandemicDrill(){
+      pushLog('疫情应急演练结束 · 隔离舱位与净化流程验证通过','cmd','医疗');
+      beep(660,0.06,'square',0.03);
+    }
+
+    /* ================= 通信与情报 ================= */
+    const channels = reactive([
+      {name:'深空网',   freq:'21.4 GHz', sig:87},
+      {name:'地球站',   freq:'8.4 GHz',  sig:64},
+      {name:'联络信标', freq:'2.1 GHz',  sig:42},
+      {name:'未知信号', freq:'13.7 GHz', sig:18},
+    ]);
+    const selChan = ref(0);
+    const selChanObj = computed(()=> channels[selChan.value] || channels[0]);
+    const msgQueue = ref(['深空网：例行遥测确认接收','地球站：任务参数更新已同步','未知信号：检测到重复模式 0x7F3A']);
+    const decipherPct = ref(0);
+    let decipherTimer = null;
+    const commsLogs = computed(()=> log.value.filter(i => i.src === '通信'));
+    function selectChan(i){ selChan.value = i; beep(520,0.04,'square',0.02); }
+    function sendBeacon(){
+      pushLog('联络信标已发出 · 等待应答','cmd','通信');
+      beep(1200,0.08,'sine',0.05);
+    }
+    function decipher(){
+      if(decipherPct.value > 0 && decipherPct.value < 100) return;
+      decipherPct.value = 0;
+      pushLog('开始破译未知信号数据包…','info','通信');
+      decipherTimer = setInterval(()=>{
+        decipherPct.value = Math.min(100, decipherPct.value + 12);
+        if(decipherPct.value >= 100){
+          clearInterval(decipherTimer); decipherTimer = null;
+          pushLog('破译完成：「目标天体 T-04 存在规律性引力波特征」','ok','通信');
+          beep(880,0.12,'sine',0.05);
+        }
+      }, 250);
+    }
+
+    /* ================= 科研观测 ================= */
+    const sensor = reactive({ spectral:0.87, gravity:0.64, radio:0.42, backlog:35 });
+    const anomalies = reactive([
+      {name:'异常信号 A-01', status:'待分析'},
+      {name:'引力异常 G-02', status:'待分析'},
+      {name:'光学事件 O-03', status:'待分析'},
+    ]);
+    const selAnomaly = ref(0);
+    const scanPct = ref(0);
+    let scanTimer = null;
+    const sensorLogs = computed(()=> log.value.filter(i => i.src === '科研'));
+    function startScan(){
+      if(scanPct.value > 0 && scanPct.value < 100) return;
+      scanPct.value = 0;
+      pushLog('深空扫描启动：频谱 + 引力波阵列','info','科研');
+      scanTimer = setInterval(()=>{
+        scanPct.value = Math.min(100, scanPct.value + 5);
+        if(scanPct.value >= 100){
+          clearInterval(scanTimer); scanTimer = null;
+          pushLog('扫描完成：新发现 1 个异常信号（待分析）','ok','科研');
+          beep(880,0.1,'sine',0.04);
+        }
+      }, 300);
+    }
+    function selectAnomaly(i){ selAnomaly.value = i; beep(520,0.04,'square',0.02); }
+    function analyzeAnomaly(){
+      const a = anomalies[selAnomaly.value];
+      if(a.status === '已分析'){ pushLog(`${a.name} 已归档`,'info','科研'); return; }
+      a.status = '已分析';
+      pushLog(`${a.name} 分析完成：与深空引力异常高度相关`,'cmd','科研');
+      beep(640,0.06,'square',0.03);
+    }
+    function packData(){
+      sensor.backlog = Math.max(0, sensor.backlog - 10);
+      pushLog('数据档案整理完成 · 待归档 -10%','info','科研');
+      beep(420,0.06,'square',0.03);
+    }
+
+    /* ================= AI 副官 ================= */
+    const aiPool = [
+      '检测到前方小行星带密度上升 12%，建议降低巡航速度。',
+      '反应堆输出稳定，当前负载 62%，热交换正常。',
+      '目标 T-04 轨迹无异常，相对速度 -2.3 km/s。',
+      '备用通信链路已建立，信号强度良好。',
+      '环境辐射读数正常，舱外温度 -183°C。',
+    ];
+    const aiText = ref('');
+    let aiTimer = null, aiWait = null;
+    function runAi(){
+      if(orders.stealth) return;
+      const line = aiPool[Math.floor(Math.random()*aiPool.length)];
+      aiText.value = '';
+      let i = 0;
+      aiTimer = setInterval(()=>{
+        if(orders.stealth){ clearInterval(aiTimer); aiTimer = null; return; }
+        i++; aiText.value = line.slice(0,i);
+        if(i >= line.length){ clearInterval(aiTimer); aiWait = setTimeout(runAi, 14000); }
+      }, 60);
+    }
+
+    /* ================= 滚动播报 / 随机事件 / 数据漂移 ================= */
+    const tickPool = ['反应堆负载正常','导航星历已同步','护盾阵列待命','武器系统自检通过','生命维持 98%','推进剂余量 73%','通信阵列正常','AI 副官在线'];
+    const tickerText = ref(tickPool[0]);
+    let tickTimer = null, evtTimer = null, clockTimer = null, ti = 0;
+    const events = [
+      {m:'散热回路负载升至 78%，一切正常', t:'warn'},
+      {m:'深空探测器 T-04 信号衰减 12%',   t:'warn'},
+      {m:'舷窗防护罩完成例行检查',         t:'info'},
+      {m:'通信链路切换至备份信道',         t:'info'},
+      {m:'舱压稳定，湿度 41%',             t:'info'},
+      {m:'微流星撞击预警解除',             t:'warn'},
+      {m:'主计算机完成碎片整理',           t:'info'},
+    ];
+    const shieldPct = ref(98);
+    const shieldBroken = ref(false);
+    const fuelWarned = ref(false);
+    const reactorLoad = computed(()=> Math.min(100, Math.round(40 + throttle.value*0.55)));
+
+    function randomEvent(){
+      if(orders.stealth) return;   // 电子静默期间随机事件静默
+      const e = events[Math.floor(Math.random()*events.length)];
+      pushLog(e.m, e.t, '系统');
+    }
+    function drift(){
+      heading.value   = (heading.value + (Math.random()-0.5)*0.6 + 360) % 360;
+      stability.value = Math.min(100, Math.max(96, stability.value + (Math.random()-0.5)*0.3));
+      if(Math.random() < 0.3) fuel.value = Math.max(0, fuel.value - 0.02);
+      if(fuel.value <= 0 && !fuelWarned.value){
+        fuelWarned.value = true;
+        if(orders.engines){
+          orders.engines = false;
+          pushLog('燃料耗尽！引擎自动停车','crit','系统');
+        }
+        pushLog('燃料不足，引擎无法点火','crit','系统');
+        beep(140,0.25,'sawtooth',0.06);
+      }
+      if(orders.shield && alertLevel.value === 'combat'){
+        shieldPct.value = Math.max(0, shieldPct.value - 0.08);
+        if(shieldPct.value <= 0 && !shieldBroken.value){ shieldBroken.value = true; pushLog('护盾能量耗尽！','crit','系统'); }
+      }
+      /* 维生数据漂移 */
+      if(lifeSystems.oxy)      life.o2 = Math.min(100, life.o2 + 0.012);
+      else                     life.o2 = Math.max(0,  life.o2 - 0.03);
+      if(lifeSystems.scrubber) life.co2 = Math.max(0.02, life.co2 - 0.0006);
+      else                     life.co2 = Math.min(0.2,  life.co2 + 0.001);
+      life.temp += lifeSystems.thermo ? (21.5 - life.temp) * 0.02 : (Math.random() - 0.5) * 0.2;
+      life.pressure += (101.3 - life.pressure) * 0.01;
+      life.humidity += lifeSystems.hydro ? (45 - life.humidity) * 0.02 : (Math.random() - 0.5) * 0.5;
+      /* 动力漂移 */
+      power.reactor = Math.max(40, Math.min(100, power.reactor + (Math.random() - 0.5) * 0.6));
+      /* 物资消耗 */
+      cargo.forEach(c => {
+        c.amount = Math.max(0, c.amount - (rationing.value && c.name === '食物' ? c.rate * 0.4 : c.rate));
+      });
+      /* 舰体漂移：作战模式下随机受损 */
+      hull.forEach(h => {
+        if(alertLevel.value === 'combat' && Math.random() < 0.05) h.integrity = Math.max(20, h.integrity - 1);
+      });
+      /* 医疗漂移 */
+      med.exposure = Math.min(100, med.exposure + 0.01);
+      med.index = Math.max(40, Math.min(100, med.index + (Math.random() - 0.5) * 0.5));
+      /* 通信信号抖动 */
+      channels.forEach(c => { c.sig = Math.max(5, Math.min(100, c.sig + (Math.random() - 0.5) * 2)); });
+      /* 科研档案缓慢增长 */
+      sensor.backlog = Math.min(100, sensor.backlog + 0.03);
+      ti = (ti+1) % tickPool.length; tickerText.value = tickPool[ti];
+    }
+
+    /* ================= 键盘快捷键 ================= */
+    function onKey(e){
+      if(!bootDone.value) return;
+      const vk = view.value;
+      const f1 = vk === 'combat' ? 'nav' : vk + '1';
+      const f2 = vk === 'combat' ? 'cmd' : vk + '2';
+      const f3 = vk === 'combat' ? 'wpn' : vk + '3';
+      if(e.key === '1')      focus.value = f1;
+      else if(e.key === '2') focus.value = f2;
+      else if(e.key === '3') focus.value = f3;
+      else if(e.key === 'q' || e.key === 'Q') moveSub(-1);
+      else if(e.key === 'e' || e.key === 'E') moveSub(1);
+      else if(e.key === ' '){ e.preventDefault(); if(vk === 'combat') fireWeapon(); }
+    }
+
+    /* ================= 挂载 / 卸载 ================= */
+    onMounted(()=>{
+      tickClock();
+      clockTimer = setInterval(tickClock, 1000);
+      stars = Array.from({length:150}, ()=>({x:Math.random()*2-1, y:Math.random()*2-1, z:Math.random()*0.95+0.05}));
+      sizeCanvas();
+      /* 画布尺寸跟随容器：字体加载、布局变化、窗口缩放后自动同步 */
+      if(window.ResizeObserver){
+        canvasRO = new ResizeObserver(()=> sizeCanvas());
+        if(starCanvas.value && starCanvas.value.parentElement) canvasRO.observe(starCanvas.value.parentElement);
+        if(radarCanvas.value && radarCanvas.value.parentElement) canvasRO.observe(radarCanvas.value.parentElement);
+      }
+      raf  = requestAnimationFrame(drawStars);
+      raf2 = requestAnimationFrame(drawRadar);
+      window.addEventListener('resize', sizeCanvas);
+      window.addEventListener('pointerdown', ensureAudio, {once:true});
+      window.addEventListener('keydown', onKey);
+      runAi();
+      tickTimer = setInterval(randomEvent, 20000);
+      evtTimer  = setInterval(drift, 2400);
+      pushLog('导航星历同步完成','info','系统');
+      pushLog('武器子系统自检通过','info','系统');
+      pushLog('AI 副官已上线','ok','系统');
+      if(shipName.value){
+        document.title = `${displayName.value} · 舰长控制台`;
+        pushLog(`欢迎回来，舰长。「${displayName.value}」已就绪`,'ok','系统');
+        runBoot();
+      }else{
+        document.title = '星舰 · 舰长控制台';
+        showNaming.value = true;
+      }
+    });
+    onUnmounted(()=>{
+      cancelAnimationFrame(raf); cancelAnimationFrame(raf2); stopChartRaf();
+      if(canvasRO) canvasRO.disconnect();
+      clearInterval(autoTimer);
+      clearInterval(warpTimer);
+      clearTimeout(engineIgniteTimer);
+      clearInterval(bootTimer);  clearInterval(chargeTimer); clearInterval(lockTimer);
+      clearInterval(tickTimer);  clearInterval(evtTimer); clearInterval(clockTimer);
+      clearInterval(aiTimer);    clearTimeout(aiWait);
+      window.removeEventListener('resize', sizeCanvas);
+      window.removeEventListener('keydown', onKey);
+    });
+
+    return {
+      alertLevel, alertLevels, setAlert, sound, toggleSound, focus, firing,
+      sysLeds,
+      nameDraft, showNaming, displayName, enTag, previewName, confirmName, openRename,
+      shipTime, shipDate, log, bootDone, bootText, skipBoot,
+      throttle, heading, fuelPct, stability, speedKm, navState, navStateCls,
+      starPoints, dest, destId, selPt, selPtId, reachCount, ptType,
+      selectPt, setDestination, openChart, closeChart, chartOpen, chartCanvas,
+      starCanvas, radarCanvas,
+      weapons, selW, selectWeapon, charging, toggleCharge, fireWeapon,
+      lockP, locked, toggleLock,
+      autoMode, toggleAuto,
+      orders, cmdButtons, toggleOrder, alarm,
+      engineIgnite, flameOpacity,
+      view, domain, domainButtons, subViews, setDomain, setView, moveSub, keysHint,
+      life, lifeSystems, lifeSysButtons, toggleLifeSystem,
+      lifeEms, lifeEmsButtons, toggleLifeEms, lifeTip, barCls,
+      power, powerBranches, powerTotal, loadState, setBranch, toggleEmergency, powerLogs,
+      cargo, selCargo, selCargoObj, selectCargo, cargoEta, lowCargo,
+      requestSupply, rationing, toggleRationing, cargoLogs,
+      hull, selHull, selHullObj, selectHull, repairTeams, hullOverall,
+      deployRepair, recallRepair, hullLogs,
+      med, medRes, screening, runScreening, pandemicDrill, medLogs,
+      channels, selChan, selChanObj, selectChan, msgQueue,
+      decipherPct, decipher, sendBeacon, commsLogs,
+      sensor, anomalies, selAnomaly, selectAnomaly,
+      startScan, scanPct, analyzeAnomaly, packData, sensorLogs,
+      warpReady, warping, btnCls, btnLabel, btnEn, btnClick,
+      aiText, tickerText, reactorLoad, shieldPct,
+    };
+  }
+});
+/* 渲染错误浮层：方便排查，正常情况不会出现 */
+__app.config.errorHandler = function(err, instance, info){
+  try{
+    let box = document.getElementById('errbox');
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'errbox';
+      box.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:999;max-width:80vw;padding:8px 12px;background:rgba(40,10,12,.95);border:1px solid #e0564f;color:#ffd9d6;font-family:monospace;font-size:11px;line-height:1.6;white-space:pre-wrap';
+      document.body.appendChild(box);
+    }
+    box.textContent = 'RUNTIME ERROR: ' + (err && err.message ? err.message : String(err)) + (info ? '\n[in ' + info + ']' : '');
+  }catch(e){}
+};
+__app.mount('#app');
+}
+</script>
+</body>
+</html>
